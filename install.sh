@@ -45,9 +45,17 @@ fi
 # ---------------------------------------------------------------------------
 echo "==> Checking prerequisites"
 
+# `dpkg -s <pkg>` returns success even for a package that was later removed but left its
+# config files behind ("deinstall ok config-files") — it only fails if dpkg has never heard
+# of the package at all. That false positive is exactly how a pre-removed `ufw` slips past a
+# naive check. Match the actual install status instead.
+is_pkg_installed() {
+  [ "$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null)" = "install ok installed" ]
+}
+
 ensure_apt_pkg() {
   local pkg="$1"
-  if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+  if ! is_pkg_installed "$pkg"; then
     echo "   installing $pkg"
     sudo apt-get install -y "$pkg"
   fi
@@ -55,7 +63,7 @@ ensure_apt_pkg() {
 
 NEED_APT_UPDATE=0
 for pkg in ca-certificates curl openssl ufw; do
-  dpkg -s "$pkg" >/dev/null 2>&1 || NEED_APT_UPDATE=1
+  is_pkg_installed "$pkg" || NEED_APT_UPDATE=1
 done
 if ! command -v docker >/dev/null 2>&1; then NEED_APT_UPDATE=1; fi
 if [ "$NEED_APT_UPDATE" -eq 1 ]; then
@@ -85,7 +93,7 @@ if ! groups "$USER" | grep -qw docker; then
 fi
 
 # iptables-persistent prompts interactively unless preseeded
-if ! dpkg -s iptables-persistent >/dev/null 2>&1; then
+if ! is_pkg_installed iptables-persistent; then
   echo "   installing iptables-persistent"
   echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
   echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
