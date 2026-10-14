@@ -20,6 +20,29 @@ fi
 cd "$(dirname "${BASH_SOURCE[0]}")"
 ROOT="$(pwd)"
 
+# Same stale-group-membership issue install.sh guards against, but here it's usually the
+# self-hosted GitHub Actions runner **service** that was started before this user was added to
+# the docker group — a systemd service caches group membership at start time, same as any other
+# long-running process. `sg docker -c '<command>'` sidesteps it: it recomputes group membership
+# fresh from /etc/group at invocation time, regardless of what the calling process (the runner
+# service, in this case) was started with — so relaunch through it once if `docker info` fails.
+if ! docker info >/dev/null 2>&1; then
+  if [ "${AIAO_REEXEC_DOCKER_GROUP:-0}" = "1" ]; then
+    echo "ERROR: still can't talk to Docker after relaunching via 'sg docker'." >&2
+    echo "If this runs under the GitHub Actions self-hosted runner, the runner service itself" >&2
+    echo "may need a restart to pick up a NEW docker group membership (not just a new job):" >&2
+    echo "  cd ~/actions-runner && sudo ./svc.sh stop && sudo ./svc.sh start" >&2
+    exit 1
+  fi
+  if ! command -v sg >/dev/null 2>&1; then
+    echo "ERROR: can't talk to Docker (permission denied), and 'sg' isn't available to work around it." >&2
+    exit 1
+  fi
+  echo "docker group membership isn't active in this process yet — relaunching via 'sg docker'"
+  export AIAO_REEXEC_DOCKER_GROUP=1
+  exec sg docker -c "$(printf '%q ' "$0" "$@")"
+fi
+
 for f in edge-proxy/.env my-ai-agent/agent-backend/.env my-ai-agent/client-chat-ui/.env my-mcp-tools/mcp-hub/.env; do
   if [ ! -f "$ROOT/$f" ]; then
     echo "ERROR: $f is missing. Run ./install.sh once on this server before the first deploy." >&2
