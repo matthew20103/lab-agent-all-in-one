@@ -148,9 +148,21 @@ ACME_EMAIL="${ACME_EMAIL:-$default_email}"
 
 # Public Let's Encrypt/ZeroSSL validation can only ever reach a server at a real public IP.
 # A private-network test box (e.g. 192.168.x.x/10.x.x.x) will always fail with a DNS-looking
-# error ("no valid A records found") that's actually a reachability problem, not a DNS one.
-default_public_reachable="$(existing CADDY_LOCAL_CERTS "$ROOT/edge-proxy/.env")"
-if [ "$default_public_reachable" = "local_certs" ]; then default_public_reachable="n"; else default_public_reachable="y"; fi
+# error ("no valid A records found") that's actually a reachability problem, not a DNS one —
+# and repeated attempts can trip Let's Encrypt's rate limiter for up to an hour. So default to
+# the SAFE answer ("n") whenever this hasn't been explicitly answered before; only default to
+# "y" if a previous run's answer is actually on record (grep for the key, not just its value —
+# an explicit prior "public" answer is stored as an empty value, indistinguishable from
+# "never asked" if we only looked at the resolved value).
+if grep -qE "^CADDY_LOCAL_CERTS=" "$ROOT/edge-proxy/.env" 2>/dev/null; then
+  if [ "$(existing CADDY_LOCAL_CERTS "$ROOT/edge-proxy/.env")" = "local_certs" ]; then
+    default_public_reachable="n"
+  else
+    default_public_reachable="y"
+  fi
+else
+  default_public_reachable="n"
+fi
 read -rp "Is this server reachable from the public internet on ports 80/443 (a real public IP, not a private 192.168.x.x/10.x.x.x one)? [${default_public_reachable}]: " public_reachable_input
 public_reachable_input="${public_reachable_input:-$default_public_reachable}"
 if [[ "$public_reachable_input" =~ ^[Yy] ]]; then
