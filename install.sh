@@ -99,6 +99,19 @@ if [ "$NEED_RELOGIN" -eq 1 ]; then
   echo
 fi
 
+# Being listed in the docker group (checked above) and this *session* actually having that
+# group active are two different things — a session started before the usermod won't pick it
+# up until you log back in (or run `newgrp docker`). Catch that now with a real probe, rather
+# than failing confusingly later on the first `docker run`/`docker compose` call (e.g. mid-prompt
+# at the dashboard-password hashing step).
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: can't talk to Docker (permission denied), even though your user is in the 'docker' group." >&2
+  echo "This session just hasn't picked up that group membership yet. Fix with either:" >&2
+  echo "  - run: newgrp docker   (fixes only this shell), then re-run ./install.sh" >&2
+  echo "  - or:  log out and SSH back in, then re-run ./install.sh" >&2
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # 3. Prompts
 # ---------------------------------------------------------------------------
