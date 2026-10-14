@@ -14,9 +14,6 @@ concurrency:
   group: deploy-agent-all-in-one
   cancel-in-progress: false
 
-env:
-  DEPLOY_DIR: /opt/agent-all-in-one
-
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -68,8 +65,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Sync files to ${{ env.DEPLOY_DIR }}
+      # $HOME on the self-hosted runner's own machine, resolved at run time — not /opt, so
+      # no sudo/chown setup is needed on the server beyond the folder you already rsynced
+      # install.sh into.
+      - name: Set deploy dir
+        run: echo "DEPLOY_DIR=$HOME/agent-all-in-one" >> "$GITHUB_ENV"
+
+      - name: Sync files to $DEPLOY_DIR
         run: |
+          mkdir -p "$DEPLOY_DIR"
           rsync -a --delete \
             --exclude '.git/' \
             --exclude '.github/' \

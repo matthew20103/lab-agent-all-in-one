@@ -1,7 +1,7 @@
 # Deploying with GitHub Actions
 
-This repo follows the same self-hosted-runner pattern `my-mcp-tools` already uses on its own
-(see `my-mcp-tools/github-actions-deploy-guide.md`), extended to cover all four stacks:
+This repo follows the same self-hosted-runner pattern `my-mcp-tools` originally used on its
+own (back when it was deployed as a separate repo), extended to cover all four stacks:
 `client-chat-ui`, `agent-backend`, `mcp-hub`, and `edge-proxy`.
 
 ```
@@ -10,7 +10,7 @@ This repo follows the same self-hosted-runner pattern `my-mcp-tools` already use
  edit files              repo: agent-all-in-one (private)               self-hosted runner (your user)
  git push  ───────────►  Actions workflow  ◄──── polls for jobs ─────────  │
                          ├─ validate (GitHub cloud runner)                 ├─ checkout repo
-                         └─ deploy   (runs on YOUR server) ──────────────► ├─ rsync → /opt/agent-all-in-one
+                         └─ deploy   (runs on YOUR server) ──────────────► ├─ rsync → ~/agent-all-in-one
                                                                            └─ deploy.sh → docker compose x4
                                                                               (reads .env files + ~/mcp-secrets/
                                                                                already on the server)
@@ -95,25 +95,20 @@ sudo apt-get install -y git rsync
 need to do that manually. Just make sure `rsync` and `git` are present (the runner needs
 `rsync` for the deploy step; `git` for the checkout step).
 
-### Prepare the deploy folder
-The runner runs as your normal login user (not root — GitHub's runner refuses to `config.sh`
-as root).
-```bash
-sudo mkdir -p /opt/agent-all-in-one
-sudo chown "$USER":"$USER" /opt/agent-all-in-one
-sudo chmod 750 /opt/agent-all-in-one
-```
-
 ### Copy the code once, manually, to run `install.sh`
+The deploy folder is `~/agent-all-in-one` — a plain subfolder of the runner user's home
+directory, not `/opt`. No `sudo`/`chown` setup needed: you already own your own home
+directory, and the self-hosted runner (Part 3) runs as that same user.
+
 The very first `install.sh` run needs to happen before any CI deploy makes sense (there's
 nothing for `deploy.sh` to redeploy until `.env` files exist). Easiest: `rsync` this folder
 over by hand once, run `install.sh`, then let GitHub Actions take over from here on.
 ```bash
 # From your Mac:
-rsync -a --exclude '.git/' ~/Documents/ai-agent-all-in-one/ <user>@<ubuntu-ip>:/opt/agent-all-in-one/
+rsync -a --exclude '.git/' ~/Documents/ai-agent-all-in-one/ <user>@<ubuntu-ip>:~/agent-all-in-one/
 
 # On the Ubuntu server:
-cd /opt/agent-all-in-one
+cd ~/agent-all-in-one
 ./install.sh
 ```
 Follow the prompts (domain, ACME email, dashboard username/password, ragui username/password,
@@ -122,8 +117,10 @@ AI Gateway source IP). Fill in the business secrets it reminds you about
 `~/mcp-secrets/{hub,memory,postgres}.env`) before letting it continue to the "bring everything
 up" step — see `ARCHITECTURE.md` §9 for the full checklist.
 
-Once this completes successfully, `/opt/agent-all-in-one` has every `.env` file `deploy.sh`
-needs, and every future deploy can go through GitHub Actions instead.
+Once this completes successfully, `~/agent-all-in-one` has every `.env` file `deploy.sh`
+needs, and every future deploy can go through GitHub Actions instead. The workflow's `deploy`
+job resolves this same path itself (`$HOME/agent-all-in-one`, evaluated on the runner at run
+time), so it always lands on the folder you just set up — no path to keep in sync by hand.
 
 ---
 
@@ -175,7 +172,7 @@ Watch **Actions**: validate ✅ → deploy ✅. `deploy.sh`'s output (including 
 bearer-token smoke tests) shows up in the **Deploy and smoke test** step log.
 
 **Re-deploy without a code change**: Actions → "Deploy agent-all-in-one" → **Run workflow**,
-or on the server: `/opt/agent-all-in-one/deploy.sh` (no `sudo`). Use this after editing a
+or on the server: `~/agent-all-in-one/deploy.sh` (no `sudo`). Use this after editing a
 `.env` file or anything in `~/mcp-secrets/` directly on the server.
 
 **Changed the domain or a dashboard/ragui password?** Re-run `./install.sh` on the server by
@@ -192,10 +189,11 @@ behavior), then push or re-run the workflow to pick up any code changes too.
 | `git push`: `refusing to allow ... without 'workflow' scope` | Your token lacks the `workflow` scope — generate a new one with `repo` + `workflow`, remove the old one from macOS Keychain Access, push again. |
 | deploy job stuck "Waiting for a runner" | `cd ~/actions-runner && sudo ./svc.sh status` on the server. Label must be exactly `agent-all-in-one`. |
 | `rsync: command not found` (deploy job) | `sudo apt-get install -y rsync` on the server, then re-run the job. |
-| `rsync: ... Permission denied` | `/opt/agent-all-in-one` isn't owned by the runner's user — `sudo chown -R "$USER":"$USER" /opt/agent-all-in-one`. |
+| `rsync: ... Permission denied` | `~/agent-all-in-one` isn't owned by the runner's user (unlikely under your own home directory, but check `ls -ld ~/agent-all-in-one`) — `sudo chown -R "$USER":"$USER" ~/agent-all-in-one`. |
+| `rsync: [Receiver] mkdir "..." failed: Permission denied` | The deploy job is targeting a path the runner user can't create. Confirm the workflow's "Set deploy dir" step resolves to `$HOME/agent-all-in-one` for the **runner's** user (`systemctl show -p User 'actions.runner.*'` on the server), not `/opt` or another user's home. |
 | deploy.sh: `ERROR: ... is missing. Run ./install.sh ...` | The first manual `install.sh` run (Part 2) hasn't happened yet, or its `.env` files were deleted. Re-run `install.sh` on the server. |
 | `docker compose config` fails in **validate** | A compose file has a real YAML/syntax error — the job log shows the exact line. Dummy secrets are pre-created by the workflow, so this isn't a missing-secret issue. |
-| mcp-hub smoke test fails inside **deploy.sh** | Same troubleshooting as `my-mcp-tools/mcp-hub-guide.md` and `github-actions-deploy-guide.md` — those still apply, since `deploy.sh` just calls `my-mcp-tools/mcp-hub/scripts/deploy.sh` for that part. |
+| mcp-hub smoke test fails inside **deploy.sh** | Same troubleshooting as `my-mcp-tools/mcp-hub-guide.md` — it still applies, since `deploy.sh` just calls `my-mcp-tools/mcp-hub/scripts/deploy.sh` for that part. |
 
 ---
 
@@ -204,7 +202,7 @@ behavior), then push or re-run the workflow to pick up any code changes too.
 - [ ] Mac: git identity set, GitHub HTTPS sign-in works (PAT with `repo` + `workflow`)
 - [ ] Mac: `git init`, commit (no `.env`/`.install-state` in `git status`), pushed to `matthew20103/agent-all-in-one`
 - [ ] Actions: validate ✅, deploy waiting for runner
-- [ ] Ubuntu: `/opt/agent-all-in-one` owned by your user; code rsynced once manually; `./install.sh` run and completed successfully
+- [ ] Ubuntu: code rsynced once manually to `~/agent-all-in-one`; `./install.sh` run and completed successfully
 - [ ] Ubuntu: runner installed with label `agent-all-in-one`, running as a service, shows **Idle** in GitHub
 - [ ] Push (or **Run workflow**) → deploy job ✅, all four stacks' smoke output looks right
 - [ ] DNS A records for all 6 hostnames point at this server (`ARCHITECTURE.md` §4)
