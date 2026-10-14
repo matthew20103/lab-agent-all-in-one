@@ -92,24 +92,27 @@ if ! dpkg -s iptables-persistent >/dev/null 2>&1; then
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
 fi
 
-if [ "$NEED_RELOGIN" -eq 1 ]; then
-  echo
-  echo "NOTE: added $USER to the 'docker' group. Log out and back in (or run 'newgrp docker')"
-  echo "      before the 'docker compose up' steps below, or re-run this script after that."
-  echo
-fi
-
 # Being listed in the docker group (checked above) and this *session* actually having that
 # group active are two different things — a session started before the usermod won't pick it
-# up until you log back in (or run `newgrp docker`). Catch that now with a real probe, rather
-# than failing confusingly later on the first `docker run`/`docker compose` call (e.g. mid-prompt
-# at the dashboard-password hashing step).
+# up until a new login (or an explicit group switch). `newgrp docker` can't be used here: it
+# execs into a brand-new shell and never returns, so nothing after it in this script would run.
+# `sg docker -c '<command>'` is the non-interactive equivalent — it runs one command with the
+# docker group active without replacing the session — so on a mismatch, relaunch this whole
+# script through it once, automatically, instead of making you log out and back in by hand.
 if ! docker info >/dev/null 2>&1; then
-  echo "ERROR: can't talk to Docker (permission denied), even though your user is in the 'docker' group." >&2
-  echo "This session just hasn't picked up that group membership yet. Fix with either:" >&2
-  echo "  - run: newgrp docker   (fixes only this shell), then re-run ./install.sh" >&2
-  echo "  - or:  log out and SSH back in, then re-run ./install.sh" >&2
-  exit 1
+  if [ "${AIAO_REEXEC_DOCKER_GROUP:-0}" = "1" ]; then
+    echo "ERROR: still can't talk to Docker after relaunching via 'sg docker'." >&2
+    echo "Log out and SSH back in (a fresh session, not just a new tab), then re-run ./install.sh." >&2
+    exit 1
+  fi
+  if ! command -v sg >/dev/null 2>&1; then
+    echo "ERROR: can't talk to Docker (permission denied), and 'sg' isn't available to work around it." >&2
+    echo "Log out and SSH back in, then re-run ./install.sh." >&2
+    exit 1
+  fi
+  echo "   docker group membership isn't active in this shell yet — relaunching via 'sg docker' (no logout needed)"
+  export AIAO_REEXEC_DOCKER_GROUP=1
+  exec sg docker -c "$(printf '%q ' "$0" "$@")"
 fi
 
 # ---------------------------------------------------------------------------
