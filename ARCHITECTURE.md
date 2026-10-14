@@ -193,9 +193,12 @@ folder over, e.g. via `rsync`/`scp`, same as `mcp-hub-guide.md` already
 describes). Safe to re-run — it's idempotent.
 
 1. **Prerequisites**: checks for Docker Engine + Compose plugin (≥ v2.20,
-   needed for `mcp-hub`'s `include:`), curl, openssl, ufw, iptables-persistent;
-   installs only what's missing; adds the current user to the `docker` group
-   if needed.
+   needed for `mcp-hub`'s `include:`), curl, openssl, and ufw; installs only
+   what's missing (checking real dpkg install status, not just whether dpkg
+   has ever heard of the package — a removed-but-not-purged package still
+   reports success from a naive `dpkg -s`); adds the current user to the
+   `docker` group if needed, and auto-recovers if that membership isn't
+   active in the current shell yet (`sg docker`, no manual relogin needed).
 2. **Prompts for everything**, not just infrastructure: base domain, Let's
    Encrypt contact email, dashboard admin username/password, the `chroma-ui`
    admin username/password, the AI Gateway's source IP (for the mcp-hub
@@ -215,8 +218,13 @@ describes). Safe to re-run — it's idempotent.
    entered). `~/mcp-secrets/hub.env` is still handled by `mcp-hub`'s own
    `scripts/deploy.sh`, unchanged.
 4. **Firewall**: `ufw` allows SSH/80/443; the MCP hub's port 8080 is
-   restricted to the AI Gateway's IP via the `DOCKER-USER` iptables chain
-   (Docker-published ports bypass `ufw` itself).
+   restricted to the AI Gateway's IP via a rule inserted into the
+   `DOCKER-USER` iptables chain (Docker-published ports bypass `ufw` itself).
+   That rule is persisted across reboots by a small systemd oneshot unit
+   (`agent-all-in-one-docker-user.service`, `After=docker.service`) rather
+   than the `iptables-persistent` package — that package actively
+   Conflicts/Replaces `ufw` on Ubuntu 24.04, so installing one silently
+   uninstalls the other if both are requested.
 5. **Brings everything up**, in order: `mcp-hub` (via its own
    `scripts/deploy.sh`, reusing its existing token-bootstrap/smoke-test
    logic), `agent-backend`, `client-chat-ui`, then `edge-proxy`.

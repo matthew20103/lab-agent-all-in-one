@@ -94,8 +94,8 @@ You already provisioned it (4 vCPU / 8 GB / 300 GB). SSH in with your normal sud
 sudo apt-get update
 sudo apt-get install -y git rsync
 ```
-`install.sh` installs Docker, curl, openssl, ufw, and iptables-persistent itself — you don't
-need to do that manually. Just make sure `rsync` and `git` are present (the runner needs
+`install.sh` installs Docker, curl, openssl, and ufw itself — you don't need to do that
+manually. Just make sure `rsync` and `git` are present (the runner needs
 `rsync` for the deploy step; `git` for the checkout step).
 
 ### Copy the code once, manually, to run `install.sh`

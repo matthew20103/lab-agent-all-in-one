@@ -92,14 +92,6 @@ if ! groups "$USER" | grep -qw docker; then
   NEED_RELOGIN=1
 fi
 
-# iptables-persistent prompts interactively unless preseeded
-if ! is_pkg_installed iptables-persistent; then
-  echo "   installing iptables-persistent"
-  echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
-  echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
-fi
-
 # Being listed in the docker group (checked above) and this *session* actually having that
 # group active are two different things — a session started before the usermod won't pick it
 # up until a new login (or an explicit group switch). `newgrp docker` can't be used here: it
@@ -360,16 +352,34 @@ echo "==> Firewall"
 sudo ufw allow OpenSSH >/dev/null
 sudo ufw allow 80/tcp >/dev/null
 sudo ufw allow 443/tcp >/dev/null
-
-# Docker-published ports bypass ufw, so the MCP hub's bearer-token proxy (8080) is
-# restricted directly in the DOCKER-USER chain instead, same as mcp-hub-guide.md section 6.
-if ! sudo iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s "$GATEWAY_SOURCE_IP" -j DROP 2>/dev/null; then
-  sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s "$GATEWAY_SOURCE_IP" -j DROP
-fi
-sudo netfilter-persistent save >/dev/null
-
 sudo ufw --force enable >/dev/null
-echo "   ufw: 22, 80, 443 allowed; port 8080 restricted to ${GATEWAY_SOURCE_IP} via DOCKER-USER"
+
+# Docker-published ports bypass ufw entirely, so the MCP hub's bearer-token proxy (8080) is
+# restricted directly in the DOCKER-USER chain instead, same as mcp-hub-guide.md section 6 —
+# but persisted via a small systemd unit rather than the `iptables-persistent` package, which
+# actively Conflicts/Replaces `ufw` on Ubuntu 24.04 (installing one removes the other).
+DOCKER_USER_RULE="iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s ${GATEWAY_SOURCE_IP} -j DROP 2>/dev/null || iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s ${GATEWAY_SOURCE_IP} -j DROP"
+
+sudo sh -c "$DOCKER_USER_RULE"
+
+sudo tee /etc/systemd/system/agent-all-in-one-docker-user.service >/dev/null <<EOF
+[Unit]
+Description=Restrict mcp-hub port 8080 in Docker's DOCKER-USER chain to the AI Gateway
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '${DOCKER_USER_RULE}'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now agent-all-in-one-docker-user.service >/dev/null
+
+echo "   ufw: 22, 80, 443 allowed; port 8080 restricted to ${GATEWAY_SOURCE_IP} via DOCKER-USER (persisted by systemd, not iptables-persistent)"
 
 # ---------------------------------------------------------------------------
 # 6. Bring everything up
