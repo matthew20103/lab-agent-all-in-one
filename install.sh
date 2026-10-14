@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # All-in-a-box installer: brings up client-chat-ui, agent-backend, mcp-hub and edge-proxy
-# on a single, brand-new Ubuntu server. Checks/installs prerequisites, asks for the public
-# domain once, wires every project's config to it, sets up the firewall, then starts
-# everything. Safe to re-run (idempotent): re-running just updates config and restarts.
+# on a single, brand-new Ubuntu server. Checks/installs prerequisites, interactively asks
+# for the public domain AND every business secret (Portkey, CyberArk Identity/Idira, mem0's
+# AI Gateway key), wires every project's config to it, sets up the firewall, then starts
+# everything. Safe to re-run (idempotent): re-running shows prior answers as defaults, and
+# blank input keeps whatever's already configured.
 #
 # Run as a normal sudo-capable user, NOT as root and NOT with `sudo ./install.sh` — the
 # script calls sudo itself for the privileged steps (apt, ufw, iptables, sysctl, usermod).
@@ -154,6 +156,65 @@ GATEWAY_SOURCE_IP="${GATEWAY_SOURCE_IP:-$default_gw_ip}"
 printf 'GATEWAY_SOURCE_IP=%s\n' "$GATEWAY_SOURCE_IP" > "$ROOT/.install-state"
 
 # ---------------------------------------------------------------------------
+# 3b. Business secrets (Portkey, CyberArk Identity/Idira, mem0's AI Gateway key).
+#     Blank input keeps whatever's already in the .env file; nothing here is invented.
+# ---------------------------------------------------------------------------
+echo
+echo "==> Business secrets (press Enter on any prompt to keep its current value)"
+
+AGENT_ENV="$ROOT/my-ai-agent/agent-backend/.env"
+CHAT_ENV="$ROOT/my-ai-agent/client-chat-ui/.env"
+
+default_portkey_gw="$(existing PORTKEY_GATEWAY_URL "$AGENT_ENV")"
+read -rp "Portkey gateway URL [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
+PORTKEY_GATEWAY_URL="${PORTKEY_GATEWAY_URL:-$default_portkey_gw}"
+
+existing_portkey_key="$(existing PORTKEY_API_KEY "$AGENT_ENV")"
+read -rsp "Portkey API key (leave blank to keep the existing one): " portkey_key_input
+echo
+PORTKEY_API_KEY="${portkey_key_input:-$existing_portkey_key}"
+
+default_portkey_mcp_gw="$(existing PORTKEY_MCP_GATEWAY_URL "$AGENT_ENV")"
+read -rp "Portkey MCP gateway URL [${default_portkey_mcp_gw}]: " PORTKEY_MCP_GATEWAY_URL
+PORTKEY_MCP_GATEWAY_URL="${PORTKEY_MCP_GATEWAY_URL:-$default_portkey_mcp_gw}"
+
+default_portkey_slugs="$(existing PORTKEY_MCP_SERVER_SLUGS "$AGENT_ENV")"
+read -rp "Portkey MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
+PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
+
+existing_basic_auth="$(existing BASIC_AUTH_USERS "$AGENT_ENV")"
+read -rp "BASIC_AUTH_USERS fallback login (user:bcrypt-hash,...), optional, leave blank to keep existing: " basic_auth_input
+BASIC_AUTH_USERS="${basic_auth_input:-$existing_basic_auth}"
+
+default_cyberark_issuer="$(existing CYBERARK_ISSUER "$AGENT_ENV")"
+read -rp "CyberArk Identity (Idira) issuer URL [${default_cyberark_issuer}]: " CYBERARK_ISSUER
+CYBERARK_ISSUER="${CYBERARK_ISSUER:-$default_cyberark_issuer}"
+
+default_cyberark_audience="$(existing CYBERARK_AUDIENCE "$AGENT_ENV")"
+read -rp "CyberArk Identity (Idira) audience [${default_cyberark_audience}]: " CYBERARK_AUDIENCE
+CYBERARK_AUDIENCE="${CYBERARK_AUDIENCE:-$default_cyberark_audience}"
+
+default_cyberark_jwks="$(existing CYBERARK_JWKS_URI "$AGENT_ENV")"
+read -rp "CyberArk Identity (Idira) JWKS URI [${default_cyberark_jwks}]: " CYBERARK_JWKS_URI
+CYBERARK_JWKS_URI="${CYBERARK_JWKS_URI:-$default_cyberark_jwks}"
+
+default_cyberark_client_id="$(existing CYBERARK_USER_CLIENT_ID "$CHAT_ENV")"
+read -rp "CyberArk Identity (Idira) chat client ID [${default_cyberark_client_id}]: " CYBERARK_USER_CLIENT_ID
+CYBERARK_USER_CLIENT_ID="${CYBERARK_USER_CLIENT_ID:-$default_cyberark_client_id}"
+
+existing_cyberark_secret="$(existing CYBERARK_USER_CLIENT_SECRET "$CHAT_ENV")"
+read -rsp "CyberArk Identity (Idira) chat client secret (leave blank to keep the existing one): " cyberark_secret_input
+echo
+CYBERARK_USER_CLIENT_SECRET="${cyberark_secret_input:-$existing_cyberark_secret}"
+
+# NEXTAUTH_SECRET is a local signing key, not an external credential — generate one per app
+# instead of prompting, same as any other secret with no external system to match it against.
+BACKEND_NEXTAUTH_SECRET="$(existing NEXTAUTH_SECRET "$AGENT_ENV")"
+BACKEND_NEXTAUTH_SECRET="${BACKEND_NEXTAUTH_SECRET:-$(openssl rand -base64 32)}"
+CHAT_NEXTAUTH_SECRET="$(existing NEXTAUTH_SECRET "$CHAT_ENV")"
+CHAT_NEXTAUTH_SECRET="${CHAT_NEXTAUTH_SECRET:-$(openssl rand -base64 32)}"
+
+# ---------------------------------------------------------------------------
 # 4. Write/upsert .env files (idempotent: only touches the keys we manage)
 # ---------------------------------------------------------------------------
 upsert_env_var() { # upsert_env_var FILE KEY VALUE
@@ -181,15 +242,90 @@ upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$DASHBOARD_PASSW
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_USER "$MCP_UI_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_PASSWORD_HASH "$MCP_UI_PASSWORD_HASH"
 
-upsert_env_var "$ROOT/my-ai-agent/agent-backend/.env" BASE_DOMAIN "$BASE_DOMAIN"
+upsert_env_var "$AGENT_ENV" BASE_DOMAIN "$BASE_DOMAIN"
+upsert_env_var "$AGENT_ENV" PORTKEY_GATEWAY_URL "$PORTKEY_GATEWAY_URL"
+upsert_env_var "$AGENT_ENV" PORTKEY_API_KEY "$PORTKEY_API_KEY"
+upsert_env_var "$AGENT_ENV" PORTKEY_MCP_GATEWAY_URL "$PORTKEY_MCP_GATEWAY_URL"
+upsert_env_var "$AGENT_ENV" PORTKEY_MCP_SERVER_SLUGS "$PORTKEY_MCP_SERVER_SLUGS"
+upsert_env_var "$AGENT_ENV" BASIC_AUTH_USERS "$BASIC_AUTH_USERS"
+upsert_env_var "$AGENT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
+upsert_env_var "$AGENT_ENV" CYBERARK_AUDIENCE "$CYBERARK_AUDIENCE"
+upsert_env_var "$AGENT_ENV" CYBERARK_JWKS_URI "$CYBERARK_JWKS_URI"
+upsert_env_var "$AGENT_ENV" NEXTAUTH_SECRET "$BACKEND_NEXTAUTH_SECRET"
 
-upsert_env_var "$ROOT/my-ai-agent/client-chat-ui/.env" NEXT_PUBLIC_AGENT_BASE_URL "https://agent.${BASE_DOMAIN}"
-upsert_env_var "$ROOT/my-ai-agent/client-chat-ui/.env" NEXTAUTH_URL "https://chat.${BASE_DOMAIN}"
+upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_AGENT_BASE_URL "https://agent.${BASE_DOMAIN}"
+upsert_env_var "$CHAT_ENV" NEXTAUTH_URL "https://chat.${BASE_DOMAIN}"
+upsert_env_var "$CHAT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
+upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_ID "$CYBERARK_USER_CLIENT_ID"
+upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_SECRET "$CYBERARK_USER_CLIENT_SECRET"
+upsert_env_var "$CHAT_ENV" NEXTAUTH_SECRET "$CHAT_NEXTAUTH_SECRET"
 
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
 
-chmod 600 "$ROOT/edge-proxy/.env" "$ROOT/my-ai-agent/agent-backend/.env" \
-  "$ROOT/my-ai-agent/client-chat-ui/.env" "$ROOT/my-mcp-tools/mcp-hub/.env"
+chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
+
+echo
+echo "==> Checking for still-empty required values"
+for pair in \
+  "PORTKEY_API_KEY:$PORTKEY_API_KEY" \
+  "CYBERARK_ISSUER:$CYBERARK_ISSUER" \
+  "CYBERARK_AUDIENCE:$CYBERARK_AUDIENCE" \
+  "CYBERARK_JWKS_URI:$CYBERARK_JWKS_URI" \
+  "CYBERARK_USER_CLIENT_ID:$CYBERARK_USER_CLIENT_ID" \
+  "CYBERARK_USER_CLIENT_SECRET:$CYBERARK_USER_CLIENT_SECRET" \
+; do
+  name="${pair%%:*}"
+  val="${pair#*:}"
+  [ -n "$val" ] || echo "   WARNING: $name is still empty — the app may not fully start until it's set (re-run this script to fill it in)."
+done
+
+# ---------------------------------------------------------------------------
+# 4b. mcp-hub's own per-server secrets (~/mcp-secrets/, outside the repo, same convention
+#     mcp-hub already used standalone — hub.env is handled automatically by its own
+#     scripts/deploy.sh in step 6 below, so only memory.env/postgres.env need creating here).
+# ---------------------------------------------------------------------------
+echo
+echo "==> mcp-hub secrets (~/mcp-secrets/)"
+
+MCP_SECRETS_DIR="$HOME/mcp-secrets"
+mkdir -p "$MCP_SECRETS_DIR"
+chmod 700 "$MCP_SECRETS_DIR"
+
+if [ -f "$MCP_SECRETS_DIR/memory.env" ]; then
+  echo "   ~/mcp-secrets/memory.env already exists — leaving it as-is."
+else
+  read -rsp "AI Gateway API key for mem0 memory (leave blank to reuse the Portkey API key above): " memory_gateway_key_input
+  echo
+  memory_gateway_key="${memory_gateway_key_input:-$PORTKEY_API_KEY}"
+  if [ -n "$memory_gateway_key" ]; then
+    ( umask 077
+      printf '%s\n' \
+        "POSTGRES_USER=postgres" \
+        "POSTGRES_PASSWORD=$(openssl rand -hex 16)" \
+        "JWT_SECRET=$(openssl rand -hex 32)" \
+        "ADMIN_API_KEY=$(openssl rand -hex 32)" \
+        "OPENAI_API_KEY=$memory_gateway_key" \
+        > "$MCP_SECRETS_DIR/memory.env" )
+    echo "   created ~/mcp-secrets/memory.env"
+  else
+    echo "   WARNING: no AI Gateway API key given — skipped. The memory MCP server won't start"
+    echo "   until ~/mcp-secrets/memory.env is created (mcp-hub-guide.md section 14.1, or re-run this script)."
+  fi
+fi
+
+if [ -f "$MCP_SECRETS_DIR/postgres.env" ]; then
+  echo "   ~/mcp-secrets/postgres.env already exists — leaving it as-is."
+else
+  ( umask 077
+    printf '%s\n' \
+      "POSTGRES_USER=postgres" \
+      "POSTGRES_DB=demo" \
+      "POSTGRES_PASSWORD=$(openssl rand -hex 16)" \
+      "AGENT_RO_PASSWORD=$(openssl rand -hex 16)" \
+      "AGENT_RW_PASSWORD=$(openssl rand -hex 16)" \
+      > "$MCP_SECRETS_DIR/postgres.env" )
+  echo "   created ~/mcp-secrets/postgres.env"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Firewall
@@ -212,19 +348,7 @@ sudo ufw --force enable >/dev/null
 echo "   ufw: 22, 80, 443 allowed; port 8080 restricted to ${GATEWAY_SOURCE_IP} via DOCKER-USER"
 
 # ---------------------------------------------------------------------------
-# 6. Secrets checklist (this script never invents business secrets)
-# ---------------------------------------------------------------------------
-echo
-echo "==> Before starting, make sure these are filled in (unchanged by this script):"
-echo "   - my-ai-agent/agent-backend/.env         (PORTKEY_*, CYBERARK_*, BASIC_AUTH_USERS)"
-echo "   - my-ai-agent/client-chat-ui/.env         (CYBERARK_*, NEXTAUTH_SECRET)"
-echo "   - my-ai-agent/agent-dashboard/.env         (NEXTAUTH_SECRET, PORTKEY_*)"
-echo "   - ~/mcp-secrets/{hub,memory,postgres}.env (see my-mcp-tools/mcp-hub-guide.md)"
-echo "   - ~/mcp-secrets/ and its .env files should already be chmod 700/600"
-read -rp "Press Enter once those are in place to continue (Ctrl+C to stop here and fill them in first)... "
-
-# ---------------------------------------------------------------------------
-# 7. Bring everything up
+# 6. Bring everything up
 # ---------------------------------------------------------------------------
 echo
 echo "==> Starting mcp-hub"
@@ -243,7 +367,7 @@ echo "==> Starting edge-proxy"
 ( cd "$ROOT/edge-proxy" && docker compose up -d --build )
 
 # ---------------------------------------------------------------------------
-# 8. Summary
+# 7. Summary
 # ---------------------------------------------------------------------------
 echo
 echo "== Done =="

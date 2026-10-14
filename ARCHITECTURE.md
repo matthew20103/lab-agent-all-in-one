@@ -196,22 +196,31 @@ describes). Safe to re-run — it's idempotent.
    needed for `mcp-hub`'s `include:`), curl, openssl, ufw, iptables-persistent;
    installs only what's missing; adds the current user to the `docker` group
    if needed.
-2. **Prompts once** for: base domain, Let's Encrypt contact email, dashboard
-   admin username/password, the `chroma-ui` admin username/password, and the
-   AI Gateway's source IP (for the mcp-hub firewall rule). Re-running shows
-   previous answers as defaults.
+2. **Prompts for everything**, not just infrastructure: base domain, Let's
+   Encrypt contact email, dashboard admin username/password, the `chroma-ui`
+   admin username/password, the AI Gateway's source IP (for the mcp-hub
+   firewall rule) — **and** every business secret: Portkey gateway URL/API
+   key/MCP gateway URL/server slugs, `BASIC_AUTH_USERS`, CyberArk Identity
+   (Idira) issuer/audience/JWKS URI/chat client ID+secret, and the AI Gateway
+   API key for mem0's `~/mcp-secrets/memory.env`. `NEXTAUTH_SECRET` is
+   generated per app instead of prompted (it's a local signing key, not a
+   credential that has to match anything external). Re-running shows prior
+   answers as defaults (passwords/keys show no default, just "leave blank to
+   keep the existing one"); still-empty required values get a warning printed
+   at the end rather than blocking.
 3. **Writes `.env` files** for `edge-proxy`, `agent-backend`, `client-chat-ui`,
-   and `mcp-hub` — only the domain-derived keys; it never invents or
-   overwrites business secrets (Portkey keys, CyberArk client secret,
-   `~/mcp-secrets/*.env` are still set up manually, same as before).
+   and `mcp-hub`, plus `~/mcp-secrets/{memory,postgres}.env` (the latter two
+   get random passwords generated locally — only the AI Gateway key for
+   `memory.env` is actually asked for, defaulting to the Portkey key already
+   entered). `~/mcp-secrets/hub.env` is still handled by `mcp-hub`'s own
+   `scripts/deploy.sh`, unchanged.
 4. **Firewall**: `ufw` allows SSH/80/443; the MCP hub's port 8080 is
    restricted to the AI Gateway's IP via the `DOCKER-USER` iptables chain
    (Docker-published ports bypass `ufw` itself).
 5. **Brings everything up**, in order: `mcp-hub` (via its own
    `scripts/deploy.sh`, reusing its existing token-bootstrap/smoke-test
    logic), `agent-backend`, `client-chat-ui`, then `edge-proxy`.
-6. **Prints a summary**: the 6 public hostnames to point DNS at, and a
-   reminder of which secrets still need manual values.
+6. **Prints a summary**: the 6 public hostnames to point DNS at.
 
 A companion non-interactive `deploy.sh` redeploys all four stacks using
 whatever config `install.sh` already wrote — this is what GitHub Actions runs
@@ -282,10 +291,13 @@ Notes:
 
 - [ ] Provision the new Ubuntu server per §8 sizing
 - [ ] Copy this whole project folder onto the server (`rsync`/`scp`)
-- [ ] Fill in business secrets: `agent-backend/.env`, `client-chat-ui/.env`,
-      `agent-dashboard/.env`, `~/mcp-secrets/{hub,memory,postgres}.env`
+- [ ] Have the business secrets on hand (Portkey gateway URL/API key, CyberArk
+      Identity issuer/audience/JWKS URI/chat client ID+secret, an AI Gateway
+      API key for mem0) — `./install.sh` prompts for all of them, nothing to
+      pre-edit in `.env` files by hand
 - [ ] Run `./install.sh`, answer the prompts (domain, ACME email, dashboard
-      credentials, chroma-ui credentials, AI Gateway source IP)
+      credentials, chroma-ui credentials, AI Gateway source IP, business
+      secrets above)
 - [ ] Point DNS A records for all 6 hostnames at the server's IP
 - [ ] Smoke test: TLS issues cleanly on all 6 hostnames; chat UI login +
       message round-trip; dashboard login + live-config write; each MCP

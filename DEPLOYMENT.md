@@ -19,8 +19,11 @@ own (back when it was deployed as a separate repo), extended to cover all four s
 ### Two scripts, two purposes
 
 - **`install.sh`** — one-time, interactive. Run it by hand, once per server: checks/installs
-  prerequisites, asks for the domain/ACME email/dashboard+ragui credentials/AI Gateway IP,
-  writes every `.env` file, sets up the firewall, then does the first `docker compose up`.
+  prerequisites, then prompts for *everything* needed to run — domain/ACME email/dashboard+
+  ragui credentials/AI Gateway IP **and** every business secret (Portkey, CyberArk Identity/
+  Idira, mem0's AI Gateway key) — writes every `.env` file (and generates
+  `~/mcp-secrets/{memory,postgres}.env`), sets up the firewall, then does the first
+  `docker compose up`. Nothing needs hand-editing in a `.env` file first.
 - **`deploy.sh`** — every time after that, non-interactive. Assumes `install.sh` already ran
   once (so the `.env` files and `~/mcp-secrets/` already exist) and just rebuilds/restarts
   all four stacks. This is what GitHub Actions runs on every push to `main`, and you can also
@@ -111,11 +114,10 @@ rsync -a --exclude '.git/' ~/Documents/ai-agent-all-in-one/ <user>@<ubuntu-ip>:~
 cd ~/agent-all-in-one
 ./install.sh
 ```
-Follow the prompts (domain, ACME email, dashboard username/password, ragui username/password,
-AI Gateway source IP). Fill in the business secrets it reminds you about
-(`agent-backend/.env`, `client-chat-ui/.env`, `agent-dashboard/.env`,
-`~/mcp-secrets/{hub,memory,postgres}.env`) before letting it continue to the "bring everything
-up" step — see `ARCHITECTURE.md` §9 for the full checklist.
+Have your business secrets ready before you start: Portkey gateway URL/API key/MCP gateway
+URL/server slugs, CyberArk Identity (Idira) issuer/audience/JWKS URI/chat client ID+secret,
+and an AI Gateway API key for mem0 (it'll offer to reuse the Portkey key if left blank).
+`install.sh` prompts for all of it directly — see `ARCHITECTURE.md` §9 for the full checklist.
 
 Once this completes successfully, `~/agent-all-in-one` has every `.env` file `deploy.sh`
 needs, and every future deploy can go through GitHub Actions instead. The workflow's `deploy`
