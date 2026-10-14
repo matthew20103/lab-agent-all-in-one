@@ -1,0 +1,42 @@
+{
+    email {$ACME_EMAIL}
+}
+
+# Automatic HTTPS (HTTP-01): Caddy issues and renews certs on its own for each hostname
+# below, as long as its DNS A record points at this server and ports 80/443 are reachable.
+# No DNS provider credentials needed, unlike the acme-dns setup this replaces.
+
+chat.{$BASE_DOMAIN} {
+    reverse_proxy 127.0.0.1:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+agent.{$BASE_DOMAIN} {
+    reverse_proxy 127.0.0.1:8000
+}
+
+dashboard.{$BASE_DOMAIN} {
+    basicauth {
+        {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+    }
+    reverse_proxy 127.0.0.1:3001
+}
+
+memory.{$BASE_DOMAIN} {
+    reverse_proxy 127.0.0.1:8082
+}
+
+memapi.{$BASE_DOMAIN} {
+    reverse_proxy 127.0.0.1:8083
+}
+
+ragui.{$BASE_DOMAIN} {
+    basicauth {
+        {$MCP_UI_USER} {$MCP_UI_PASSWORD_HASH}
+    }
+    reverse_proxy 127.0.0.1:8084
+}

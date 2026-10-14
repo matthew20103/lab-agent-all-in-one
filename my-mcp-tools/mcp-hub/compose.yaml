@@ -1,0 +1,25 @@
+name: mcp-hub
+
+# Each MCP server lives in its own folder under servers/ and is added here.
+include:
+  - servers/openserp/compose.yaml
+  - servers/chroma/compose.yaml
+  - servers/memory/compose.yaml
+  - servers/postgres/compose.yaml
+  # - servers/<next-server>/compose.yaml
+
+services:
+  proxy:
+    image: nginx:stable-alpine
+    container_name: mcp-proxy
+    env_file: ${HOME}/mcp-secrets/hub.env
+    environment:
+      NGINX_ENVSUBST_FILTER: "MCP_TOKEN_"
+    volumes:
+      - ./proxy/templates:/etc/nginx/templates:ro
+      - ./proxy/snippets:/etc/nginx/snippets:ro
+      # - ./proxy/certs:/etc/nginx/certs:ro   # enable for TLS (see guide section 8)
+    ports:
+      - "8080:8080"
+      # - "8443:8443"                          # enable for TLS
+    restart: unless-stopped

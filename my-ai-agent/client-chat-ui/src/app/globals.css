@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* NextChat-style palette: teal accent (rgb 29,147,171) on neutral greys. */
+:root {
+  color-scheme: light;
+  --background: 0 0% 100%;
+  --foreground: 0 0% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 15%;
+  --primary: 190 71% 39%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 15%;
+  --muted: 0 0% 97%;
+  --muted-foreground: 0 0% 45%;
+  --accent: 0 0% 95%;
+  --accent-foreground: 0 0% 15%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 90%;
+  --input: 0 0% 87%;
+  --ring: 190 71% 39%;
+  --shell: 0 0% 96%;
+  --sidebar: 198 100% 95%;
+  --bubble-user: 190 60% 92%;
+  --radius: 0.625rem;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: 0 0% 12%;
+  --foreground: 0 0% 85%;
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 85%;
+  --primary: 190 65% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 18%;
+  --secondary-foreground: 0 0% 90%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 20%;
+  --accent-foreground: 0 0% 90%;
+  --destructive: 0 63% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 22%;
+  --input: 0 0% 25%;
+  --ring: 190 65% 45%;
+  --shell: 0 0% 7%;
+  --sidebar: 196 22% 14%;
+  --bubble-user: 190 30% 20%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '▌';
+  animation: blink 0.8s step-start infinite;
+  color: hsl(var(--primary));
+}

@@ -1,0 +1,10 @@
+# Public: http://<UBUNTU_IP>:8080/memory/mcp  ->  memory-mcp:8000/mcp
+location /memory/ {
+    if ($http_authorization != "Bearer ${MCP_TOKEN_MEMORY}") {
+        return 401;
+    }
+    set $upstream http://memory-mcp:8000;
+    rewrite ^/memory/(.*)$ /$1 break;
+    proxy_pass $upstream;
+    include /etc/nginx/snippets/mcp-proxy.conf;
+}

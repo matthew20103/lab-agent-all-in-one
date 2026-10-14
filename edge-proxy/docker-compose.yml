@@ -1,0 +1,28 @@
+# The single public entry point for all four services on this box. Replaces the two
+# separate Caddy containers that used to ship inside agent-backend/ and client-chat-ui/
+# (both tried to bind host 80/443 — they can't coexist on one server).
+#
+# network_mode: host is the simplest way for this one container to reach the other three
+# stacks' 127.0.0.1:<port> bindings without wiring up a shared Docker network across
+# independently-deployed compose projects.
+services:
+  caddy:
+    image: caddy:latest
+    container_name: edge-proxy
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - BASE_DOMAIN=${BASE_DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
+      - DASHBOARD_USER=${DASHBOARD_USER}
+      - DASHBOARD_PASSWORD_HASH=${DASHBOARD_PASSWORD_HASH}
+      - MCP_UI_USER=${MCP_UI_USER}
+      - MCP_UI_PASSWORD_HASH=${MCP_UI_PASSWORD_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

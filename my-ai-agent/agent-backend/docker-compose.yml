@@ -1,0 +1,57 @@
+services:
+  # 1. Memory & State Management
+  redis:
+    image: redis:alpine
+    restart: always
+    networks:
+      - ai-net
+
+  # 2. Core AI Backend
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORTKEY_GATEWAY_URL=${PORTKEY_GATEWAY_URL}
+      - PORTKEY_API_KEY=${PORTKEY_API_KEY}
+      - BASIC_AUTH_USERS=${BASIC_AUTH_USERS}
+      - CYBERARK_ISSUER=${CYBERARK_ISSUER}
+      - CYBERARK_AUDIENCE=${CYBERARK_AUDIENCE}
+      - CYBERARK_JWKS_URI=${CYBERARK_JWKS_URI}
+    depends_on:
+      - redis
+    networks:
+      - ai-net
+
+  # 3. Admin Management UI (Next.js)
+  dashboard:
+    build:
+      context: ../agent-dashboard
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      # Same env fallbacks the agent uses, so the dashboard shows (and tests with) the effective config
+      - PORTKEY_GATEWAY_URL=${PORTKEY_GATEWAY_URL}
+      - PORTKEY_API_KEY=${PORTKEY_API_KEY}
+      - PORTKEY_MCP_GATEWAY_URL=${PORTKEY_MCP_GATEWAY_URL}
+      - PORTKEY_MCP_SERVER_SLUGS=${PORTKEY_MCP_SERVER_SLUGS}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=https://dashboard.${BASE_DOMAIN}
+      - AUTH_TRUST_HOST=true
+      - HOSTNAME=0.0.0.0
+      - AGENT_BACKEND_URL=http://agent:8000
+    depends_on:
+      - redis
+    networks:
+      - ai-net
+
+networks:
+  ai-net:
+    driver: bridge

@@ -1,0 +1,5 @@
+The 2 folders (my-ai-agent and my-mcp-tools) are from my 2 separate projects before which also involved Claude Code. So you may find some of the history there. In this project, below are the requirements of what I want.
+
+All-in-a-box: I deployed the previous projects in 3 different Ubuntu servers (chat client, backend agent and mcp tools). I want to make changes to use a single Ubuntu server to deploy all of them. But I don't want to mix things into a bulky application. Instead, please keep the separate design but using the localhost in different ports to host different services (chat client, backend agent and mcp tools). It means that all (chat client, backend agent and mcp tools) just deployed in the same Ubuntu server.
+
+System requirements of the Ubuntu server: Please help me to assertain the system requirements (CPU, RAM and storage) needed in this All-in-a-box design.

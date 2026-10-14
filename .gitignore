@@ -1,0 +1,27 @@
+# Secrets and per-server config — never committed. Written by install.sh on each server.
+.env
+*.env
+.install-state
+
+# Generated per-server TLS material (none expected here, but matches mcp-hub's own convention)
+my-mcp-tools/mcp-hub/proxy/certs/
+
+# OS cruft
+.DS_Store
+**/.DS_Store
+
+# Claude Code local settings (per-machine, not shared project config)
+**/.claude/settings.local.json
+
+# Node / Next.js (client-chat-ui, agent-dashboard)
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# Python (agent-backend, mcp-hub's custom MCP servers)
+__pycache__/
+*.pyc
+venv/
+.venv/

@@ -1,0 +1,24 @@
+services:
+  chat_ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NEXT_PUBLIC_AGENT_BASE_URL=${NEXT_PUBLIC_AGENT_BASE_URL}
+      - HOSTNAME=0.0.0.0
+      - CYBERARK_ISSUER=${CYBERARK_ISSUER}
+      - CYBERARK_USER_CLIENT_ID=${CYBERARK_USER_CLIENT_ID}
+      - CYBERARK_USER_CLIENT_SECRET=${CYBERARK_USER_CLIENT_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - AUTH_TRUST_HOST=true
+      - AUTH_DEBUG=${AUTH_DEBUG:-false}
+    networks:
+      - client-net
+
+networks:
+  client-net:
+    driver: bridge

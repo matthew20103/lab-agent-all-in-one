@@ -1,0 +1,10 @@
+# Public: http://<UBUNTU_IP>:8080/postgres/mcp  ->  postgres-mcp:5000/mcp
+location /postgres/ {
+    if ($http_authorization != "Bearer ${MCP_TOKEN_POSTGRES}") {
+        return 401;
+    }
+    set $upstream http://postgres-mcp:5000;
+    rewrite ^/postgres/(.*)$ /$1 break;
+    proxy_pass $upstream;
+    include /etc/nginx/snippets/mcp-proxy.conf;
+}

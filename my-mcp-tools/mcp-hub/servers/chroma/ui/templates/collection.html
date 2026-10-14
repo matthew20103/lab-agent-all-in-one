@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} - Chroma Knowledge Base{% endblock %}
+{% block content %}
+<p><a href="/">&larr; All collections</a></p>
+<h2>{{ name }}</h2>
+<p class="muted">{{ total }} chunk(s)</p>
+
+<div class="card">
+  <h3>Upload a document</h3>
+  <p class="muted">Supported: {{ supported_extensions }}. The original file isn't kept — only the extracted,
+    chunked text is stored.</p>
+  <form method="post" action="/collections/{{ name }}/upload" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+
+<h3>Chunks</h3>
+{% if documents %}
+<table>
+  <tr><th>Source</th><th>#</th><th>Preview</th><th></th></tr>
+  {% for d in documents %}
+  <tr>
+    <td>{{ d.source }}</td>
+    <td>{{ d.chunk_index }}</td>
+    <td class="snippet">{{ d.snippet }}&hellip;</td>
+    <td>
+      <form class="inline" method="post" action="/collections/{{ name }}/documents/{{ d.id }}/delete">
+        <button type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% if total > offset + page_size %}
+<p><a href="/collections/{{ name }}?offset={{ offset + page_size }}">Next page &rarr;</a></p>
+{% endif %}
+{% else %}
+<p class="muted">No chunks yet — upload a document above.</p>
+{% endif %}
+
+<div class="card">
+  <h3>Delete this collection</h3>
+  <p class="muted">Type <strong>{{ name }}</strong> to confirm. This removes all {{ total }} chunk(s) and can't be undone.</p>
+  <form method="post" action="/collections/{{ name }}/delete">
+    <input type="text" name="confirm_name" placeholder="{{ name }}" required>
+    <button type="submit" class="danger">Delete collection</button>
+  </form>
+</div>
+{% endblock %}

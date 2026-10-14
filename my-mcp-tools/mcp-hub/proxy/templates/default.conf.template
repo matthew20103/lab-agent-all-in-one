@@ -1,0 +1,26 @@
+# Rendered by the nginx image at container start; ${MCP_TOKEN_*} values come from ~/mcp-secrets/hub.env.
+server {
+    listen 8080;
+    # TLS (guide section 8):
+    # listen 8443 ssl;
+    # ssl_certificate     /etc/nginx/certs/mcp-hub.crt;
+    # ssl_certificate_key /etc/nginx/certs/mcp-hub.key;
+
+    server_name _;
+    client_max_body_size 10m;
+
+    # Docker's embedded DNS; lets nginx start even if one MCP backend is down.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    include /etc/nginx/conf.d/routes/*.conf;
+
+    location / {
+        return 404;
+    }
+}

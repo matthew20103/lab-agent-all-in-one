@@ -1,0 +1,69 @@
+# Standalone RAG knowledge base backed by Chroma (https://www.trychroma.com/). Three
+# containers, all built in-house following this hub's own convention for custom MCP
+# wrappers (see servers/memory/mcp/ for the pattern this mirrors) — no shared
+# Elasticsearch/MySQL/MinIO/Postgres with any other server in this hub, and no AI Gateway
+# call is needed for retrieval or ingestion (Chroma's default embedding function runs
+# locally in both chroma-mcp and chroma-ui).
+#
+# MCP (read-only: list collections, query): http://<UBUNTU_IP>:8080/chroma/mcp (via mcp-proxy)
+# UI (upload, browse, delete): https://ragui.{BASE_DOMAIN} (via edge-proxy, Caddy basicauth)
+#
+# Ingestion and deletion only happen through chroma-ui, never through the MCP server —
+# agents can search the knowledge base but can't corrupt or wipe it.
+
+services:
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: chroma
+    volumes:
+      - chroma_data:/data
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v2/heartbeat', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    networks: [chroma]
+    restart: unless-stopped
+    # No ports: reachable only from chroma-mcp and chroma-ui on the internal network.
+
+  chroma-mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    image: mcp-hub/chroma-mcp:0.1.0
+    container_name: chroma-mcp
+    environment:
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+    depends_on:
+      chroma: {condition: service_healthy}
+    networks: [default, chroma]
+    restart: unless-stopped
+    # No ports: reachable only through mcp-proxy on the Docker network.
+
+  chroma-ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    image: mcp-hub/chroma-ui:0.1.0
+    container_name: chroma-ui
+    environment:
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+    depends_on:
+      chroma: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:8084:8000"
+    networks: [chroma]
+    restart: unless-stopped
+    # Reached via edge-proxy (ragui.{BASE_DOMAIN}), not mcp-proxy, so it doesn't need
+    # to be on the `default` network.
+
+networks:
+  chroma: {}
+
+volumes:
+  chroma_data: {}

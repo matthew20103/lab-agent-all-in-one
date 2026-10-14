@@ -1,0 +1,52 @@
+# MCP Toolbox for Databases config. ${VAR} values are expanded from the container environment (postgres.env).
+# Safety is enforced by the database roles (see init/01-roles.sh), not by these descriptions.
+kind: source
+name: demo-ro
+type: postgres
+host: postgres-db
+port: "5432"
+database: demo
+user: agent_ro
+password: ${AGENT_RO_PASSWORD}
+---
+kind: source
+name: demo-rw
+type: postgres
+host: postgres-db
+port: "5432"
+database: demo
+user: agent_rw
+password: ${AGENT_RW_PASSWORD}
+---
+kind: tool
+name: list_schemas
+type: postgres-list-schemas
+source: demo-ro
+description: List the schemas in the demo database. The demo data lives in schema "demo".
+---
+kind: tool
+name: list_tables
+type: postgres-list-tables
+source: demo-ro
+description: >-
+  List tables with their columns, keys and comments. Call this before writing SQL so you use the
+  correct table and column names. Tables are in schema "demo" (customers, orders, payments, employees).
+---
+kind: tool
+name: query
+type: postgres-execute-sql
+source: demo-ro
+description: >-
+  Run ONE read-only SQL statement (SELECT) against the demo database and return the rows.
+  Always schema-qualify tables, e.g. demo.customers, and add a LIMIT for large results.
+  The data is synthetic demo data. Writes are rejected; use the execute tool for changes.
+---
+kind: tool
+name: execute
+type: postgres-execute-sql
+source: demo-rw
+description: >-
+  Run ONE data-changing SQL statement (INSERT, UPDATE or DELETE) on tables in schema "demo".
+  Use only when the user explicitly asks to change data. Add RETURNING * (or RETURNING id) so the
+  changed rows are shown; without it the result is empty. Schema changes (CREATE, ALTER, DROP,
+  TRUNCATE) are not permitted.

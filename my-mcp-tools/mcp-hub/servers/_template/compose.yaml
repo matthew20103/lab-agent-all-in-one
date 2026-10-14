@@ -1,0 +1,32 @@
+# Template for a new MCP server. Copy this folder to servers/<name>/ and pick ONE option.
+# Rules: the backend serves Streamable HTTP at /mcp, publishes no ports, and uses a unique container_name.
+
+services:
+  # Option A: the MCP server already speaks Streamable HTTP
+  example-mcp:
+    image: vendor/example-mcp:1.2.3
+    container_name: example-mcp
+    environment:
+      PORT: "8000"
+    restart: unless-stopped
+
+  # Option B: the MCP server is stdio-only -> wrap it with supergateway
+  # example-mcp:
+  #   image: supercorp/supergateway:latest     # pin a specific tag in production
+  #   container_name: example-mcp
+  #   command:
+  #     - --stdio
+  #     - npx -y @vendor/example-mcp-server
+  #     - --outputTransport
+  #     - streamableHttp
+  #     - --port
+  #     - "8000"
+  #   env_file: ${HOME}/mcp-secrets/example.env   # backend's own API keys, on the server only (chmod 600)
+  #   restart: unless-stopped
+
+  # Option C: your own MCP server code in this folder
+  # example-mcp:
+  #   build: .
+  #   image: mcp-hub/example-mcp:0.1.0
+  #   container_name: example-mcp
+  #   restart: unless-stopped

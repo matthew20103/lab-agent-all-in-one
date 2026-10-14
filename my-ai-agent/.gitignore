@@ -1,0 +1,19 @@
+# Mac OS
+.DS_Store
+**/.DS_Store
+
+# Node / Frontend (for client-chat-ui & agent-dashboard)
+node_modules/
+dist/
+build/
+.env
+
+# Original brand artwork (.ai/.eps) stays local; only the exported SVGs in public/brand/ are committed
+client-chat-ui/brand-src/
+
+# Python / Backend (for agent-backend)
+__pycache__/
+venv/
+env/
+*.pyc
+.env

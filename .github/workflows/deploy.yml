@@ -1,0 +1,84 @@
+name: Deploy agent-all-in-one
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-agent-all-in-one
+  cancel-in-progress: false
+
+env:
+  DEPLOY_DIR: /opt/agent-all-in-one
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check script syntax
+        run: |
+          bash -n install.sh
+          bash -n deploy.sh
+          bash -n my-mcp-tools/mcp-hub/scripts/deploy.sh
+
+      - name: Validate mcp-hub compose files
+        run: |
+          mkdir -p ~/mcp-secrets
+          touch ~/mcp-secrets/hub.env ~/mcp-secrets/memory.env ~/mcp-secrets/postgres.env
+          echo "BASE_DOMAIN=example.com" > my-mcp-tools/mcp-hub/.env
+          cd my-mcp-tools/mcp-hub && docker compose config --quiet
+
+      - name: Validate edge-proxy compose file
+        run: |
+          cat > edge-proxy/.env <<'EOF'
+          BASE_DOMAIN=example.com
+          ACME_EMAIL=test@example.com
+          DASHBOARD_USER=admin
+          DASHBOARD_PASSWORD_HASH=x
+          MCP_UI_USER=admin
+          MCP_UI_PASSWORD_HASH=x
+          EOF
+          cd edge-proxy && docker compose config --quiet
+
+      - name: Validate agent-backend compose file
+        run: |
+          echo "BASE_DOMAIN=example.com" > my-ai-agent/agent-backend/.env
+          cd my-ai-agent/agent-backend && docker compose config --quiet
+
+      - name: Validate client-chat-ui compose file
+        run: |
+          cat > my-ai-agent/client-chat-ui/.env <<'EOF'
+          NEXT_PUBLIC_AGENT_BASE_URL=https://agent.example.com
+          NEXTAUTH_URL=https://chat.example.com
+          EOF
+          cd my-ai-agent/client-chat-ui && docker compose config --quiet
+
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, agent-all-in-one]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Sync files to ${{ env.DEPLOY_DIR }}
+        run: |
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.env' \
+            --exclude '*.env' \
+            --exclude '.install-state' \
+            --exclude 'my-mcp-tools/mcp-hub/proxy/certs/' \
+            --exclude '**/node_modules/' \
+            ./ "$DEPLOY_DIR/"
+
+      - name: Deploy and smoke test
+        run: "$DEPLOY_DIR/deploy.sh"

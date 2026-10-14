@@ -1,0 +1,12 @@
+# Copy to proxy/templates/routes/<name>.conf.template, replace "example" and the port,
+# and push. deploy.sh adds MCP_TOKEN_EXAMPLE to ~/mcp-secrets/hub.env on the server.
+# Public: http://<UBUNTU_IP>:8080/example/mcp  ->  example-mcp:8000/mcp
+location /example/ {
+    if ($http_authorization != "Bearer ${MCP_TOKEN_EXAMPLE}") {
+        return 401;
+    }
+    set $upstream http://example-mcp:8000;
+    rewrite ^/example/(.*)$ /$1 break;
+    proxy_pass $upstream;
+    include /etc/nginx/snippets/mcp-proxy.conf;
+}

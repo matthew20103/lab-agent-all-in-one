@@ -1,0 +1,85 @@
+# OpenSERP config, based on upstream config.yaml, tuned for Google.
+server:
+  host: 0.0.0.0
+  port: 7000
+  debug: false
+  verbose: false
+  raw_requests: false # browser mode: much better success rate on Google
+  insecure: true
+
+app:
+  log_format: "text"
+  timeout: 20
+  browser_path: ""
+  profiles: ""
+  head: false
+  leakless: false
+  leave_head: false
+  block_resources: "image,font,css,media"
+  block_trackers: true
+  max_processes: 4 # lower if RAM < 8 GB
+  idle_ttl: 5m
+  mega_timeout: 90s
+
+extract:
+  enabled: true
+  default_mode: auto
+  timeout: 20s
+  max_bytes: 2000000
+  max_concurrent: 2
+
+proxies:
+  allow_request_proxy_url: false # don't let callers route traffic via arbitrary proxy URLs
+  #global: http://127.0.0.1:8080
+  #entries:
+  #  - url: http://user:pass@res-proxy-1.example:8080
+  #    tags: [google]
+  health:
+    failure_threshold: 2
+  lanes:
+    enabled: true
+    max_lanes: 100
+    drop_cookies_on_challenge: true
+
+cache:
+  ttl_seconds: 600 # cache identical queries for 10 min to reduce Google hits
+  max_size: 1000
+
+resilience:
+  max_retries: 1
+  allow_endpoint_fallback: false # /google/search stays Google-only
+
+cors:
+  enabled: false # only called server-to-server by openserp-mcp
+
+# 2captcha:
+#   apikey: "..."
+
+captcha:
+  solver_enabled: false
+
+google:
+  rate_requests: 10 # avg requests/minute to Google (upstream default 60 is aggressive)
+  rate_burst: 3
+  #proxy: google
+  #captcha: true
+
+yandex:
+  rate_requests: 60
+  rate_burst: 3
+
+baidu:
+  rate_requests: 60
+  rate_burst: 3
+
+bing:
+  rate_requests: 60
+  rate_burst: 3
+
+duckduckgo:
+  rate_requests: 60
+  rate_burst: 3
+
+ecosia:
+  rate_requests: 60
+  rate_burst: 3

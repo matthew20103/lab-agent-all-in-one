@@ -1,0 +1,42 @@
+# Demo PostgreSQL database + MCP Toolbox for Databases (v1.14.0).
+# MCP: http://<UBUNTU_IP>:8080/postgres/mcp (via mcp-proxy). No published ports.
+# Admin: docker exec -it postgres-db psql -U postgres -d demo
+# Secrets come from ~/mcp-secrets/postgres.env on the server (see mcp-hub-guide.md, section 15).
+
+services:
+  postgres-mcp:
+    image: us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox:1.14.0
+    container_name: postgres-mcp
+    command: ["--config", "/app/tools.yaml", "--address", "0.0.0.0", "--port", "5000"]
+    env_file: ${HOME}/mcp-secrets/postgres.env   # AGENT_RO_PASSWORD / AGENT_RW_PASSWORD, expanded in tools.yaml
+    volumes:
+      - ./tools.yaml:/app/tools.yaml:ro
+    depends_on:
+      postgres-db: {condition: service_healthy}
+    networks: [default, postgres]
+    restart: unless-stopped
+    # No ports: reachable only through mcp-proxy. No healthcheck: the image is distroless (no shell).
+
+  postgres-db:
+    image: postgres:17.11
+    container_name: postgres-db
+    env_file: ${HOME}/mcp-secrets/postgres.env   # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB / AGENT_*_PASSWORD
+    environment:
+      TZ: Asia/Hong_Kong
+    shm_size: 256mb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro   # runs only when the volume is empty
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [postgres]
+    restart: unless-stopped
+
+networks:
+  postgres: {}
+
+volumes:
+  postgres_data: {}

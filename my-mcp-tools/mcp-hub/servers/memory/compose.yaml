@@ -1,0 +1,96 @@
+# Agent memory: mem0 v2.2.1 REST server + dashboard, with our MCP wrapper in ./mcp.
+# Dashboard: https://memory.${BASE_DOMAIN}   mem0 API: https://memapi.${BASE_DOMAIN}   (both via edge-proxy)
+# MCP: http://<UBUNTU_IP>:8080/memory/mcp (via mcp-proxy)
+# All secrets come from ~/mcp-secrets/memory.env on the server (see mcp-hub-guide.md, section 14).
+# BASE_DOMAIN comes from mcp-hub/.env (written by install.sh), not ~/mcp-secrets/ (not a secret).
+
+services:
+  memory-mcp:
+    build: ./mcp
+    image: mcp-hub/memory-mcp:0.1.0
+    container_name: memory-mcp
+    env_file: ${HOME}/mcp-secrets/memory.env   # ADMIN_API_KEY
+    environment:
+      MEM0_API_URL: http://memory-api:8000
+    depends_on:
+      memory-api: {condition: service_healthy}
+    networks: [default, memory]
+    restart: unless-stopped
+    # No ports: reachable only through mcp-proxy on the Docker network.
+
+  memory-api:
+    build:
+      context: https://github.com/mem0ai/mem0.git#v2.2.1:server
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt mem0ai==2.2.1
+        COPY . .
+        ENV PYTHONUNBUFFERED=1
+        CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
+    image: mcp-hub/memory-api:2.2.1
+    container_name: memory-api
+    env_file: ${HOME}/mcp-secrets/memory.env   # POSTGRES_*, JWT_SECRET, ADMIN_API_KEY, OPENAI_API_KEY (gateway key)
+    environment:
+      POSTGRES_HOST: memory-postgres
+      APP_DB_NAME: mem0_app
+      HISTORY_DB_PATH: /app/history/history.db
+      OPENAI_BASE_URL: http://192.168.110.161/v1      # AI Gateway LLM API (port 80)
+      MEM0_DEFAULT_LLM_MODEL: "@google-vertex-sep/gemini-3.6-flash"
+      DASHBOARD_URL: https://memory.${BASE_DOMAIN}
+      AUTH_DISABLED: "false"
+      MEM0_TELEMETRY: "false"
+    volumes:
+      - memory_history:/app/history
+    ports:
+      - "127.0.0.1:8083:8000"          # the dashboard's browser code calls this API directly,
+                                        # via https://memapi.${BASE_DOMAIN} fronted by edge-proxy
+    depends_on:
+      memory-postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    networks: [memory]
+    restart: unless-stopped
+
+  memory-dashboard:
+    build: https://github.com/mem0ai/mem0.git#v2.2.1:server/dashboard
+    image: mcp-hub/memory-dashboard:2.2.1
+    container_name: memory-dashboard
+    environment:
+      NEXT_PUBLIC_API_URL: https://memapi.${BASE_DOMAIN}
+      API_INTERNAL_URL: http://memory-api:8000
+      NEXT_PUBLIC_INSTANCE_NAME: Agent Memory
+      DASHBOARD_URL: https://memory.${BASE_DOMAIN}   # https:// here is required for the login cookie to be Secure, now that edge-proxy terminates TLS
+    ports:
+      - "127.0.0.1:8082:3000"
+    depends_on:
+      - memory-api
+    networks: [memory]
+    restart: unless-stopped
+
+  memory-postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    container_name: memory-postgres
+    env_file: ${HOME}/mcp-secrets/memory.env   # POSTGRES_USER / POSTGRES_PASSWORD
+    shm_size: 128mb
+    volumes:
+      - memory_pgdata:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U \"$$POSTGRES_USER\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [memory]
+    restart: unless-stopped
+
+networks:
+  memory: {}
+
+volumes:
+  memory_pgdata: {}
+  memory_history: {}

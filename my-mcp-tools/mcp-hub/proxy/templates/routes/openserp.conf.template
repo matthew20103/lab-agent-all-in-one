@@ -1,0 +1,10 @@
+# Public: http://<UBUNTU_IP>:8080/openserp/mcp  ->  openserp-mcp:3333/mcp
+location /openserp/ {
+    if ($http_authorization != "Bearer ${MCP_TOKEN_OPENSERP}") {
+        return 401;
+    }
+    set $upstream http://openserp-mcp:3333;
+    rewrite ^/openserp/(.*)$ /$1 break;
+    proxy_pass $upstream;
+    include /etc/nginx/snippets/mcp-proxy.conf;
+}
