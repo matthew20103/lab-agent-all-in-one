@@ -1,10 +1,23 @@
 {
     email {$ACME_EMAIL}
+    {$CADDY_LOCAL_CERTS}
 }
 
-# Automatic HTTPS (HTTP-01): Caddy issues and renews certs on its own for each hostname
-# below, as long as its DNS A record points at this server and ports 80/443 are reachable.
-# No DNS provider credentials needed, unlike the acme-dns setup this replaces.
+# Automatic HTTPS: by default (CADDY_LOCAL_CERTS unset, the line above resolves to blank and
+# is ignored), Caddy issues and renews real Let's Encrypt certs on its own for each hostname
+# below, as long as its DNS A record points at this server's PUBLIC IP and ports 80/443 are
+# reachable from the public internet — no DNS provider credentials needed, unlike the
+# acme-dns setup this replaces.
+#
+# If this server only has a private/internal IP (common for a test box), public ACME
+# validation can never reach it — Let's Encrypt reports "no valid A records found" even
+# though DNS resolves fine internally. install.sh sets CADDY_LOCAL_CERTS=local_certs for that
+# case: the global `local_certs` option switches every site block below to Caddy's own
+# internal CA at once, no per-site changes needed. Works immediately with no public
+# reachability, but browsers will show a "not trusted" warning (expected for a
+# self-signed-style cert) unless you import Caddy's root CA, and `curl` needs `-k`/`--insecure`.
+# Switch back (re-run install.sh, answer the public-reachability prompt "yes") once this is
+# actually reachable from the public internet.
 
 chat.{$BASE_DOMAIN} {
     reverse_proxy 127.0.0.1:3000 {

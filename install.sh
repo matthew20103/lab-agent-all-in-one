@@ -146,6 +146,22 @@ read -rp "Email for Let's Encrypt notifications [${default_email}]: " ACME_EMAIL
 ACME_EMAIL="${ACME_EMAIL:-$default_email}"
 [ -n "$ACME_EMAIL" ] || { echo "ERROR: an email is required for Let's Encrypt." >&2; exit 1; }
 
+# Public Let's Encrypt/ZeroSSL validation can only ever reach a server at a real public IP.
+# A private-network test box (e.g. 192.168.x.x/10.x.x.x) will always fail with a DNS-looking
+# error ("no valid A records found") that's actually a reachability problem, not a DNS one.
+default_public_reachable="$(existing CADDY_LOCAL_CERTS "$ROOT/edge-proxy/.env")"
+if [ "$default_public_reachable" = "local_certs" ]; then default_public_reachable="n"; else default_public_reachable="y"; fi
+read -rp "Is this server reachable from the public internet on ports 80/443 (a real public IP, not a private 192.168.x.x/10.x.x.x one)? [${default_public_reachable}]: " public_reachable_input
+public_reachable_input="${public_reachable_input:-$default_public_reachable}"
+if [[ "$public_reachable_input" =~ ^[Yy] ]]; then
+  CADDY_LOCAL_CERTS=""
+else
+  CADDY_LOCAL_CERTS="local_certs"
+  echo "   Using Caddy's internal CA (self-signed-style certs) instead of public Let's Encrypt —"
+  echo "   browsers will warn \"not trusted\" and curl needs -k/--insecure until this server is"
+  echo "   publicly reachable and you re-run this script answering \"y\" here."
+fi
+
 default_dash_user="$(existing DASHBOARD_USER "$ROOT/edge-proxy/.env")"
 default_dash_user="${default_dash_user:-admin}"
 read -rp "Admin dashboard username [${default_dash_user}]: " DASHBOARD_USER
@@ -268,6 +284,7 @@ upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_USER "$DASHBOARD_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$(escape_dollars "$DASHBOARD_PASSWORD_HASH")"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_USER "$MCP_UI_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_PASSWORD_HASH "$(escape_dollars "$MCP_UI_PASSWORD_HASH")"
+upsert_env_var "$ROOT/edge-proxy/.env" CADDY_LOCAL_CERTS "$CADDY_LOCAL_CERTS"
 
 upsert_env_var "$AGENT_ENV" BASE_DOMAIN "$BASE_DOMAIN"
 upsert_env_var "$AGENT_ENV" PORTKEY_GATEWAY_URL "$PORTKEY_GATEWAY_URL"
@@ -416,7 +433,13 @@ echo "==> Starting edge-proxy"
 # ---------------------------------------------------------------------------
 echo
 echo "== Done =="
-echo "Point these DNS A records at this server's public IP (Caddy can't issue certs until they resolve):"
+if [ -n "$CADDY_LOCAL_CERTS" ]; then
+  echo "TLS: using Caddy's internal CA (self-signed-style certs) — this server isn't marked"
+  echo "public-reachable. Browsers will warn \"not trusted\"; curl needs -k/--insecure. Re-run"
+  echo "this script and answer \"y\" to the public-reachability prompt once that's no longer true."
+else
+  echo "Point these DNS A records at this server's public IP (Caddy can't issue certs until they resolve):"
+fi
 echo "   chat.${BASE_DOMAIN}"
 echo "   agent.${BASE_DOMAIN}"
 echo "   dashboard.${BASE_DOMAIN}"

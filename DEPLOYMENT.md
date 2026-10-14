@@ -19,9 +19,11 @@ own (back when it was deployed as a separate repo), extended to cover all four s
 ### Two scripts, two purposes
 
 - **`install.sh`** — one-time, interactive. Run it by hand, once per server: checks/installs
-  prerequisites, then prompts for *everything* needed to run — domain/ACME email/dashboard+
-  ragui credentials/AI Gateway IP **and** every business secret (Portkey, CyberArk Identity/
-  Idira, mem0's AI Gateway key) — writes every `.env` file (and generates
+  prerequisites, then prompts for *everything* needed to run — domain/ACME email/whether this
+  server is publicly reachable (so Caddy knows whether to use real Let's Encrypt certs or its
+  own internal CA — see `ARCHITECTURE.md` §4 if you're on a private-network test box)/
+  dashboard+ragui credentials/AI Gateway IP **and** every business secret (Portkey, CyberArk
+  Identity/Idira, mem0's AI Gateway key) — writes every `.env` file (and generates
   `~/mcp-secrets/{memory,postgres}.env`), sets up the firewall, then does the first
   `docker compose up`. Nothing needs hand-editing in a `.env` file first.
 - **`deploy.sh`** — every time after that, non-interactive. Assumes `install.sh` already ran

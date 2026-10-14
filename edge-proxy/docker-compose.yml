@@ -18,6 +18,7 @@ services:
       - DASHBOARD_PASSWORD_HASH=${DASHBOARD_PASSWORD_HASH}
       - MCP_UI_USER=${MCP_UI_USER}
       - MCP_UI_PASSWORD_HASH=${MCP_UI_PASSWORD_HASH}
+      - CADDY_LOCAL_CERTS=${CADDY_LOCAL_CERTS}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

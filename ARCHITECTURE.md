@@ -136,13 +136,28 @@ Switched from acme-dns (DNS-01, needed a one-time manual account registration
 + per-hostname CNAME) to **Caddy's standard automatic HTTPS (HTTP-01)** —
 confirmed as the better fit for an automated installer: zero extra
 credentials, Caddy issues and renews certs on its own as long as each
-hostname's DNS A record points at the server and ports 80/443 are reachable.
+hostname's DNS A record points at the server's **public** IP and ports
+80/443 are reachable from the public internet.
+
+That last part matters: public ACME validation can never reach a
+private-network server (e.g. `192.168.x.x`), and Let's Encrypt reports that
+failure as `no valid A records found` even when DNS resolves correctly
+internally — a reachability problem that looks like a DNS problem. For
+exactly that case (a private-network test box, common before a server gets a
+real public IP), `install.sh` asks "is this server publicly reachable?" and,
+if not, sets `CADDY_LOCAL_CERTS=local_certs` — a global Caddy option that
+switches every site block to Caddy's own internal CA at once. This works
+immediately with no public reachability, but browsers show a "not trusted"
+warning (expected for a self-signed-style cert) and `curl` needs
+`-k`/`--insecure`. Re-running `install.sh` and answering "yes" once the
+server is actually public-reachable switches back to real Let's Encrypt certs.
 
 `edge-proxy/Caddyfile` is parameterized entirely by environment variables
-(`{$BASE_DOMAIN}`, `{$ACME_EMAIL}`, `{$DASHBOARD_USER}`,
-`{$DASHBOARD_PASSWORD_HASH}`, `{$MCP_UI_USER}`, `{$MCP_UI_PASSWORD_HASH}`),
-sourced from `edge-proxy/.env`. Changing the domain later is a one-line edit
-(or re-running `install.sh`), not a multi-file find/replace.
+(`{$BASE_DOMAIN}`, `{$ACME_EMAIL}`, `{$CADDY_LOCAL_CERTS}`,
+`{$DASHBOARD_USER}`, `{$DASHBOARD_PASSWORD_HASH}`, `{$MCP_UI_USER}`,
+`{$MCP_UI_PASSWORD_HASH}`), sourced from `edge-proxy/.env`. Changing the
+domain later is a one-line edit (or re-running `install.sh`), not a
+multi-file find/replace.
 
 Public hostnames (all under one `BASE_DOMAIN`, set once at install time):
 
