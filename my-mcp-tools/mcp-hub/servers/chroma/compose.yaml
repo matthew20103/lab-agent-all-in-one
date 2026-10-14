@@ -21,9 +21,13 @@ services:
       IS_PERSISTENT: "TRUE"
       PERSIST_DIRECTORY: /data
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v2/heartbeat', timeout=5)"]
+      # The chromadb/chroma image's Debian base has no curl/wget/python3/nc — Chroma's server
+      # runs as a self-contained binary, not a Python script, so there's no interpreter on
+      # PATH to shell out to. bash is present, so use its built-in /dev/tcp for a pure
+      # TCP-level check instead of depending on any external tool.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8000' 2>/dev/null"]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 30
     networks: [chroma]
     restart: unless-stopped
