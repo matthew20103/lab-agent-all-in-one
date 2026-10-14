@@ -125,6 +125,17 @@ existing() { # existing KEY FILE -> prints current value or empty
   [ -f "$2" ] && grep -E "^${1}=" "$2" 2>/dev/null | head -n1 | cut -d= -f2- || true
 }
 
+# agent-backend/.env, client-chat-ui/.env and edge-proxy/.env are all referenced via
+# `${VAR}` in their respective docker-compose.yml `environment:` lists — which means Compose
+# interpolates their *values*, not just substitutes them verbatim. A bcrypt hash (always
+# contains literal `$`) or any other secret that happens to contain `$` gets silently mangled:
+# Compose reads e.g. `$2b$10$H21b92H5x6o8SOb69JBHT...`, treats `$H21b92H5x6o8SOb69JBHT` as an
+# undefined variable reference, and blanks that chunk out. Compose's documented escape for a
+# literal `$` is `$$` — apply it at write time, reverse it when reading a value back as a
+# "keep existing" default, so re-running this script doesn't double-escape.
+escape_dollars() { printf '%s' "${1//\$/\$\$}"; }
+unescape_dollars() { printf '%s' "${1//\$\$/\$}"; }
+
 default_domain="$(existing BASE_DOMAIN "$ROOT/edge-proxy/.env")"
 read -rp "Base domain, e.g. example.com [${default_domain}]: " BASE_DOMAIN
 BASE_DOMAIN="${BASE_DOMAIN:-$default_domain}"
@@ -140,7 +151,7 @@ default_dash_user="${default_dash_user:-admin}"
 read -rp "Admin dashboard username [${default_dash_user}]: " DASHBOARD_USER
 DASHBOARD_USER="${DASHBOARD_USER:-$default_dash_user}"
 
-existing_hash="$(existing DASHBOARD_PASSWORD_HASH "$ROOT/edge-proxy/.env")"
+existing_hash="$(unescape_dollars "$(existing DASHBOARD_PASSWORD_HASH "$ROOT/edge-proxy/.env")")"
 read -rsp "Admin dashboard password (leave blank to keep the existing one): " DASHBOARD_PASSWORD
 echo
 if [ -n "$DASHBOARD_PASSWORD" ]; then
@@ -155,7 +166,7 @@ default_mcp_ui_user="${default_mcp_ui_user:-admin}"
 read -rp "MCP knowledge-base UI (ragui) username [${default_mcp_ui_user}]: " MCP_UI_USER
 MCP_UI_USER="${MCP_UI_USER:-$default_mcp_ui_user}"
 
-existing_mcp_ui_hash="$(existing MCP_UI_PASSWORD_HASH "$ROOT/edge-proxy/.env")"
+existing_mcp_ui_hash="$(unescape_dollars "$(existing MCP_UI_PASSWORD_HASH "$ROOT/edge-proxy/.env")")"
 read -rsp "MCP knowledge-base UI (ragui) password (leave blank to keep the existing one): " MCP_UI_PASSWORD
 echo
 if [ -n "$MCP_UI_PASSWORD" ]; then
@@ -185,7 +196,7 @@ default_portkey_gw="$(existing PORTKEY_GATEWAY_URL "$AGENT_ENV")"
 read -rp "Portkey gateway URL [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
 PORTKEY_GATEWAY_URL="${PORTKEY_GATEWAY_URL:-$default_portkey_gw}"
 
-existing_portkey_key="$(existing PORTKEY_API_KEY "$AGENT_ENV")"
+existing_portkey_key="$(unescape_dollars "$(existing PORTKEY_API_KEY "$AGENT_ENV")")"
 read -rsp "Portkey API key (leave blank to keep the existing one): " portkey_key_input
 echo
 PORTKEY_API_KEY="${portkey_key_input:-$existing_portkey_key}"
@@ -198,7 +209,7 @@ default_portkey_slugs="$(existing PORTKEY_MCP_SERVER_SLUGS "$AGENT_ENV")"
 read -rp "Portkey MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
-existing_basic_auth="$(existing BASIC_AUTH_USERS "$AGENT_ENV")"
+existing_basic_auth="$(unescape_dollars "$(existing BASIC_AUTH_USERS "$AGENT_ENV")")"
 read -rp "BASIC_AUTH_USERS fallback login (user:bcrypt-hash,...), optional, leave blank to keep existing: " basic_auth_input
 BASIC_AUTH_USERS="${basic_auth_input:-$existing_basic_auth}"
 
@@ -218,7 +229,7 @@ default_cyberark_client_id="$(existing CYBERARK_USER_CLIENT_ID "$CHAT_ENV")"
 read -rp "CyberArk Identity (Idira) chat client ID [${default_cyberark_client_id}]: " CYBERARK_USER_CLIENT_ID
 CYBERARK_USER_CLIENT_ID="${CYBERARK_USER_CLIENT_ID:-$default_cyberark_client_id}"
 
-existing_cyberark_secret="$(existing CYBERARK_USER_CLIENT_SECRET "$CHAT_ENV")"
+existing_cyberark_secret="$(unescape_dollars "$(existing CYBERARK_USER_CLIENT_SECRET "$CHAT_ENV")")"
 read -rsp "CyberArk Identity (Idira) chat client secret (leave blank to keep the existing one): " cyberark_secret_input
 echo
 CYBERARK_USER_CLIENT_SECRET="${cyberark_secret_input:-$existing_cyberark_secret}"
@@ -254,16 +265,16 @@ echo "==> Writing configuration"
 upsert_env_var "$ROOT/edge-proxy/.env" BASE_DOMAIN "$BASE_DOMAIN"
 upsert_env_var "$ROOT/edge-proxy/.env" ACME_EMAIL "$ACME_EMAIL"
 upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_USER "$DASHBOARD_USER"
-upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$DASHBOARD_PASSWORD_HASH"
+upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$(escape_dollars "$DASHBOARD_PASSWORD_HASH")"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_USER "$MCP_UI_USER"
-upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_PASSWORD_HASH "$MCP_UI_PASSWORD_HASH"
+upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_PASSWORD_HASH "$(escape_dollars "$MCP_UI_PASSWORD_HASH")"
 
 upsert_env_var "$AGENT_ENV" BASE_DOMAIN "$BASE_DOMAIN"
 upsert_env_var "$AGENT_ENV" PORTKEY_GATEWAY_URL "$PORTKEY_GATEWAY_URL"
-upsert_env_var "$AGENT_ENV" PORTKEY_API_KEY "$PORTKEY_API_KEY"
+upsert_env_var "$AGENT_ENV" PORTKEY_API_KEY "$(escape_dollars "$PORTKEY_API_KEY")"
 upsert_env_var "$AGENT_ENV" PORTKEY_MCP_GATEWAY_URL "$PORTKEY_MCP_GATEWAY_URL"
 upsert_env_var "$AGENT_ENV" PORTKEY_MCP_SERVER_SLUGS "$PORTKEY_MCP_SERVER_SLUGS"
-upsert_env_var "$AGENT_ENV" BASIC_AUTH_USERS "$BASIC_AUTH_USERS"
+upsert_env_var "$AGENT_ENV" BASIC_AUTH_USERS "$(escape_dollars "$BASIC_AUTH_USERS")"
 upsert_env_var "$AGENT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
 upsert_env_var "$AGENT_ENV" CYBERARK_AUDIENCE "$CYBERARK_AUDIENCE"
 upsert_env_var "$AGENT_ENV" CYBERARK_JWKS_URI "$CYBERARK_JWKS_URI"
@@ -273,7 +284,7 @@ upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_AGENT_BASE_URL "https://agent.${BASE_DOMA
 upsert_env_var "$CHAT_ENV" NEXTAUTH_URL "https://chat.${BASE_DOMAIN}"
 upsert_env_var "$CHAT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
 upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_ID "$CYBERARK_USER_CLIENT_ID"
-upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_SECRET "$CYBERARK_USER_CLIENT_SECRET"
+upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_SECRET "$(escape_dollars "$CYBERARK_USER_CLIENT_SECRET")"
 upsert_env_var "$CHAT_ENV" NEXTAUTH_SECRET "$CHAT_NEXTAUTH_SECRET"
 
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
