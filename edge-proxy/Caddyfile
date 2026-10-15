@@ -20,6 +20,9 @@
 # actually reachable from the public internet.
 
 chat.{$BASE_DOMAIN} {
+    log {
+        output stdout
+    }
     reverse_proxy 127.0.0.1:3000 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
@@ -29,10 +32,16 @@ chat.{$BASE_DOMAIN} {
 }
 
 agent.{$BASE_DOMAIN} {
+    log {
+        output stdout
+    }
     reverse_proxy 127.0.0.1:8000
 }
 
 dashboard.{$BASE_DOMAIN} {
+    log {
+        output stdout
+    }
     basicauth {
         {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
     }
@@ -40,14 +49,23 @@ dashboard.{$BASE_DOMAIN} {
 }
 
 memory.{$BASE_DOMAIN} {
+    log {
+        output stdout
+    }
     reverse_proxy 127.0.0.1:8082
 }
 
 memapi.{$BASE_DOMAIN} {
+    log {
+        output stdout
+    }
     reverse_proxy 127.0.0.1:8083
 }
 
 ragui.{$BASE_DOMAIN} {
+    log {
+        output stdout
+    }
     basicauth {
         {$MCP_UI_USER} {$MCP_UI_PASSWORD_HASH}
     }
