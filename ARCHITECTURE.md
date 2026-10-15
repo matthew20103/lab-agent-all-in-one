@@ -265,12 +265,22 @@ runner on the Ubuntu box, same pattern `my-mcp-tools` already uses for itself).
    chunked and embedded, but the original binary isn't kept (no MinIO) — a
    known trade-off for staying standalone. If retrieving/downloading the
    original file later turns out to matter, that needs object storage added.
-4. **`NEXT_PUBLIC_AGENT_BASE_URL` build-time vs runtime.** It's read via
-   `process.env` with no Dockerfile build-arg wiring, which only works if
-   it's consumed server-side (consistent with CLAUDE.md's note that TLS
-   verification to the backend is disabled, which can't happen in-browser).
-   Smoke-test after deploy — if the browser calls the old domain, this needs
-   to become a build-arg instead.
+4. ~~`NEXT_PUBLIC_AGENT_BASE_URL` build-time vs runtime~~ — **resolved**. It
+   *is* consumed client-side (`src/hooks/useWebSocket.ts`,
+   `src/components/WorkspaceShell.tsx`), and the value does make it into the
+   built bundle: the Dockerfile's build stage picks it up from
+   `client-chat-ui/.env` directly (Next.js's own `.env` loading at build
+   time), not from `docker-compose.yml`'s `environment:` block, so no
+   build-arg wiring was actually needed. The real bug this surfaced instead:
+   `NEXT_PUBLIC_AGENT_BASE_URL` must be a **bare host[:port], no scheme** —
+   `src/lib/constants.ts` prepends `wss://`/`https://` itself. Setting it to
+   a full URL (`https://agent.{BASE_DOMAIN}`, `install.sh`'s original mistake)
+   produces a double-scheme string that the WHATWG URL parser mangles into
+   `wss://https//agent.../ws` (the first `https` is parsed as a host with an
+   empty port, swallowing a `/` from the `//` into the path) — silently
+   breaking the chat WebSocket and the `/api/v1/client-config` REST call with
+   no server-side trace at all (the browser never resolves the mangled host).
+   `install.sh` now writes the scheme-less form.
 
 ---
 

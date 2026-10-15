@@ -309,7 +309,13 @@ upsert_env_var "$AGENT_ENV" CYBERARK_AUDIENCE "$CYBERARK_AUDIENCE"
 upsert_env_var "$AGENT_ENV" CYBERARK_JWKS_URI "$CYBERARK_JWKS_URI"
 upsert_env_var "$AGENT_ENV" NEXTAUTH_SECRET "$BACKEND_NEXTAUTH_SECRET"
 
-upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_AGENT_BASE_URL "https://agent.${BASE_DOMAIN}"
+# NEXT_PUBLIC_AGENT_BASE_URL must be a BARE host[:port], no scheme — client-chat-ui's own
+# src/lib/constants.ts prepends "wss://"/"https://" itself (AGENT_WSS_URL = `wss://${AGENT_BASE_URL}/ws`,
+# etc.). Setting this to a full URL (e.g. "https://agent.${BASE_DOMAIN}") produces a
+# double-scheme string that the WHATWG URL parser mangles into "wss://https//agent.../ws"
+# (the first "https" becomes an empty-port host, swallowing a "/" from "//" into the path) —
+# a real bug this project hit, not a hypothetical one. Keep this scheme-less.
+upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_AGENT_BASE_URL "agent.${BASE_DOMAIN}"
 upsert_env_var "$CHAT_ENV" NEXTAUTH_URL "https://chat.${BASE_DOMAIN}"
 upsert_env_var "$CHAT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
 upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_ID "$CYBERARK_USER_CLIENT_ID"

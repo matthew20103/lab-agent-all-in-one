@@ -53,7 +53,7 @@ jobs:
       - name: Validate client-chat-ui compose file
         run: |
           cat > my-ai-agent/client-chat-ui/.env <<'EOF'
-          NEXT_PUBLIC_AGENT_BASE_URL=https://agent.example.com
+          NEXT_PUBLIC_AGENT_BASE_URL=agent.example.com
           NEXTAUTH_URL=https://chat.example.com
           EOF
           cd my-ai-agent/client-chat-ui && docker compose config --quiet
