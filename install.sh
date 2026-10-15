@@ -308,6 +308,11 @@ upsert_env_var "$AGENT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
 upsert_env_var "$AGENT_ENV" CYBERARK_AUDIENCE "$CYBERARK_AUDIENCE"
 upsert_env_var "$AGENT_ENV" CYBERARK_JWKS_URI "$CYBERARK_JWKS_URI"
 upsert_env_var "$AGENT_ENV" NEXTAUTH_SECRET "$BACKEND_NEXTAUTH_SECRET"
+# The chat UI and admin dashboard call the backend's API cross-origin from the browser (two
+# different hostnames), so FastAPI's CORSMiddleware needs both explicitly allow-listed —
+# derived from BASE_DOMAIN so this doesn't silently break on the next domain change the way
+# the old hardcoded matthewwan.dev origins just did.
+upsert_env_var "$AGENT_ENV" CORS_ALLOWED_ORIGINS "https://chat.${BASE_DOMAIN},https://dashboard.${BASE_DOMAIN}"
 
 # NEXT_PUBLIC_AGENT_BASE_URL must be a BARE host[:port], no scheme — client-chat-ui's own
 # src/lib/constants.ts prepends "wss://"/"https://" itself (AGENT_WSS_URL = `wss://${AGENT_BASE_URL}/ws`,

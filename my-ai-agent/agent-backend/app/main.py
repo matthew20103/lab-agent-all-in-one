@@ -204,9 +204,11 @@ def fence_diagram_blocks(text: str) -> str:
 
 app = FastAPI(title="Managed AI Agent")
 
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://chat.matthewwan.dev", "https://dashboard.matthewwan.dev"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
