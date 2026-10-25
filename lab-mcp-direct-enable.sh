@@ -18,17 +18,22 @@ fi
 cd "$(dirname "${BASH_SOURCE[0]}")"
 ROOT="$(pwd)"
 
-if ! docker network inspect ai-net >/dev/null 2>&1; then
-  echo "ERROR: the 'ai-net' Docker network doesn't exist yet. Start agent-backend first (./install.sh or ./deploy.sh)." >&2
+# Compose prefixes network names with the project name (defaults to the compose file's
+# folder, "agent-backend") rather than using the bare name declared in docker-compose.yml —
+# so the real Docker network is "agent-backend_ai-net", not "ai-net". Look it up via
+# Compose's own labels instead of guessing the exact prefix/separator convention.
+NETWORK_NAME="$(docker network ls --filter label=com.docker.compose.project=agent-backend --filter label=com.docker.compose.network=ai-net --format '{{.Name}}' | head -n1)"
+if [ -z "$NETWORK_NAME" ]; then
+  echo "ERROR: couldn't find agent-backend's ai-net Docker network. Start agent-backend first (./install.sh or ./deploy.sh)." >&2
   exit 1
 fi
 
-SUBNET="$(docker network inspect ai-net --format '{{(index .IPAM.Config 0).Subnet}}')"
+SUBNET="$(docker network inspect "$NETWORK_NAME" --format '{{(index .IPAM.Config 0).Subnet}}')"
 if [ -z "$SUBNET" ]; then
-  echo "ERROR: couldn't read ai-net's subnet from Docker. Is my-ai-agent/agent-backend/docker-compose.yml's ai-net.ipam.config set?" >&2
+  echo "ERROR: couldn't read ${NETWORK_NAME}'s subnet from Docker. Is my-ai-agent/agent-backend/docker-compose.yml's ai-net.ipam.config set?" >&2
   exit 1
 fi
-echo "==> agent-backend's ai-net subnet: $SUBNET"
+echo "==> agent-backend's ai-net network ($NETWORK_NAME) subnet: $SUBNET"
 
 if ! sudo iptables -C DOCKER-USER -p tcp -s "$SUBNET" -m conntrack --ctorigdstport 8080 -j ACCEPT 2>/dev/null; then
   sudo iptables -I DOCKER-USER -p tcp -s "$SUBNET" -m conntrack --ctorigdstport 8080 -j ACCEPT

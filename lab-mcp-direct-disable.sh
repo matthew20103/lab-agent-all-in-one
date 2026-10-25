@@ -19,8 +19,12 @@ else
   echo "==> lab-mcp-direct.service wasn't installed, nothing to remove there"
 fi
 
-if docker network inspect ai-net >/dev/null 2>&1; then
-  SUBNET="$(docker network inspect ai-net --format '{{(index .IPAM.Config 0).Subnet}}')"
+# Same lookup as lab-mcp-direct-enable.sh: Compose prefixes the network name with the
+# project name ("agent-backend_ai-net"), so find it via Compose's labels rather than the
+# bare name declared in docker-compose.yml.
+NETWORK_NAME="$(docker network ls --filter label=com.docker.compose.project=agent-backend --filter label=com.docker.compose.network=ai-net --format '{{.Name}}' | head -n1)"
+if [ -n "$NETWORK_NAME" ]; then
+  SUBNET="$(docker network inspect "$NETWORK_NAME" --format '{{(index .IPAM.Config 0).Subnet}}')"
   if [ -n "$SUBNET" ] && sudo iptables -C DOCKER-USER -p tcp -s "$SUBNET" -m conntrack --ctorigdstport 8080 -j ACCEPT 2>/dev/null; then
     sudo iptables -D DOCKER-USER -p tcp -s "$SUBNET" -m conntrack --ctorigdstport 8080 -j ACCEPT
     echo "==> removed the live DOCKER-USER ACCEPT rule for $SUBNET -> port 8080"
@@ -28,7 +32,7 @@ if docker network inspect ai-net >/dev/null 2>&1; then
     echo "==> no matching live DOCKER-USER rule found (already removed, or ai-net's subnet changed)"
   fi
 else
-  echo "==> ai-net network not found (agent-backend not running) — nothing to remove at the iptables level"
+  echo "==> agent-backend's ai-net network not found (agent-backend not running) — nothing to remove at the iptables level"
 fi
 
 echo
