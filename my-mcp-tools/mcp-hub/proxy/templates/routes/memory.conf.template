@@ -1,6 +1,21 @@
 # Public: http://<UBUNTU_IP>:8080/memory/mcp  ->  memory-mcp:8000/mcp
+#
+# Accepts EITHER this server's own bearer token (the real, production path — what the AI
+# Gateway uses) OR the shared MCP_TOKEN_LAB_DIRECT token via the x-portkey-api-key header
+# (a lab-only shortcut: agent-backend's MCP client always sends that header/value pair
+# unconditionally to whatever mcp_gateway_url it's pointed at, so this lets candidates point
+# it straight at mcp-hub for the "direct" lab task without any code changes). One shared
+# token for every server here is intentionally weaker than the per-server tokens below — that
+# contrast is the point of the lab.
 location /memory/ {
-    if ($http_authorization != "Bearer ${MCP_TOKEN_MEMORY}") {
+    set $memory_authorized 0;
+    if ($http_authorization = "Bearer ${MCP_TOKEN_MEMORY}") {
+        set $memory_authorized 1;
+    }
+    if ($http_x_portkey_api_key = "${MCP_TOKEN_LAB_DIRECT}") {
+        set $memory_authorized 1;
+    }
+    if ($memory_authorized = 0) {
         return 401;
     }
     set $upstream http://memory-mcp:8000;
