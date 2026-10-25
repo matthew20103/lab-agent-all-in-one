@@ -7,15 +7,25 @@
 # it straight at mcp-hub for the "direct" lab task without any code changes). One shared
 # token for every server here is intentionally weaker than the per-server tokens below — that
 # contrast is the point of the lab.
+#
+# Implemented via error_page + a named fallback location rather than multiple sequential
+# `if` blocks with a shared `set` variable — the latter is a commonly-used idiom but proved
+# unreliable in practice (see nginx's own "if is evil" docs). Each `if` here does nothing but
+# a single `return`, which is the one combination nginx's docs call unconditionally safe.
 location /postgres/ {
-    set $postgres_authorized 0;
-    if ($http_authorization = "Bearer ${MCP_TOKEN_POSTGRES}") {
-        set $postgres_authorized 1;
+    error_page 418 = @postgres_lab_direct;
+    recursive_error_pages on;
+    if ($http_authorization != "Bearer ${MCP_TOKEN_POSTGRES}") {
+        return 418;
     }
-    if ($http_x_portkey_api_key = "${MCP_TOKEN_LAB_DIRECT}") {
-        set $postgres_authorized 1;
-    }
-    if ($postgres_authorized = 0) {
+    set $upstream http://postgres-mcp:5000;
+    rewrite ^/postgres/(.*)$ /$1 break;
+    proxy_pass $upstream;
+    include /etc/nginx/snippets/mcp-proxy.conf;
+}
+
+location @postgres_lab_direct {
+    if ($http_x_portkey_api_key != "${MCP_TOKEN_LAB_DIRECT}") {
         return 401;
     }
     set $upstream http://postgres-mcp:5000;
