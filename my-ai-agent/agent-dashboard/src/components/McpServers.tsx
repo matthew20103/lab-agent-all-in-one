@@ -15,7 +15,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { slugError } from '@/lib/mcp'
-import type { McpServer, McpServersConfig, McpTestResult } from '@/lib/types'
+import type { McpServer, McpServersConfig, McpTestResult, RedisConfig } from '@/lib/types'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -35,9 +35,13 @@ const secondaryButtonClass =
 
 export function McpServers() {
   const { data, mutate } = useSWR<McpServersConfig>('/api/mcp-servers', fetcher, { refreshInterval: 10000 })
+  const { data: config, mutate: mutateConfig } = useSWR<RedisConfig>('/api/config', fetcher, {
+    refreshInterval: 10000,
+  })
   // Drafts stay null until edited, so the 10 s refresh never overwrites unsaved changes.
   const [draftUrl, setDraftUrl] = useState<string | null>(null)
   const [draftServers, setDraftServers] = useState<McpServer[] | null>(null)
+  const [draftMcpApiKey, setDraftMcpApiKey] = useState<string | null>(null)
   const [newSlug, setNewSlug] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [tests, setTests] = useState<Record<string, TestState>>({})
@@ -46,19 +50,23 @@ export function McpServers() {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  if (!data) return <div className="text-muted-foreground text-sm">Loading...</div>
+  if (!data || !config) return <div className="text-muted-foreground text-sm">Loading...</div>
 
   const url = draftUrl ?? data.mcp_gateway_url
   const servers = draftServers ?? data.servers
+  const mcpApiKey = draftMcpApiKey ?? config.mcp_api_key
   const urlDirty = url.trim() !== data.mcp_gateway_url
-  const dirty = urlDirty || JSON.stringify(servers) !== JSON.stringify(data.servers)
+  const mcpApiKeyDirty = mcpApiKey !== config.mcp_api_key
+  const dirty = urlDirty || mcpApiKeyDirty || JSON.stringify(servers) !== JSON.stringify(data.servers)
   const enabledCount = servers.filter((s) => s.enabled).length
   const notice = SOURCE_NOTICE[data.source]
   const testBlockedReason = urlDirty
     ? 'Save the gateway URL first — tests use the saved URL'
     : !url.trim()
       ? 'Set an MCP Gateway URL first'
-      : null
+      : mcpApiKeyDirty
+        ? 'Save the MCP API key first — tests use the saved key'
+        : null
 
   const toggle = (slug: string) =>
     setDraftServers(servers.map((s) => (s.slug === slug ? { ...s, enabled: !s.enabled } : s)))
@@ -94,6 +102,7 @@ export function McpServers() {
   const discard = () => {
     setDraftUrl(null)
     setDraftServers(null)
+    setDraftMcpApiKey(null)
     setSaveError(null)
   }
 
@@ -101,20 +110,34 @@ export function McpServers() {
     setSaving(true)
     setSaveError(null)
     const payload = { mcp_gateway_url: url.trim(), servers }
+    const trimmedMcpApiKey = mcpApiKey.trim()
     try {
-      const res = await fetch('/api/mcp-servers', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setSaveError(body.error ?? `Save failed (HTTP ${res.status})`)
+      const [mcpRes, configRes] = await Promise.all([
+        fetch('/api/mcp-servers', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mcp_api_key: trimmedMcpApiKey }),
+        }),
+      ])
+      if (!mcpRes.ok) {
+        const body = await mcpRes.json().catch(() => ({}))
+        setSaveError(body.error ?? `Save failed (HTTP ${mcpRes.status})`)
+        return
+      }
+      if (!configRes.ok) {
+        setSaveError(`Save failed (HTTP ${configRes.status})`)
         return
       }
       await mutate({ ...payload, source: 'saved' }, false)
+      await mutateConfig({ ...config, mcp_api_key: trimmedMcpApiKey }, false)
       setDraftUrl(null)
       setDraftServers(null)
+      setDraftMcpApiKey(null)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (e) {
@@ -163,7 +186,26 @@ export function McpServers() {
           className={inputClass}
         />
         <p className="text-xs text-muted-foreground mt-1.5">
-          Each server is reached at <code className="font-mono">{'{gateway URL}/{slug}/mcp'}</code>.
+          Each server is reached at <code className="font-mono">{'{URL}/{slug}/mcp'}</code>. Use
+          the AI Gateway&apos;s own MCP endpoint for production, or point this directly at an MCP
+          hub (bypassing the gateway entirely) for local/lab testing.
+        </p>
+      </section>
+
+      <section>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-2">
+          MCP API Key
+        </label>
+        <input
+          type="password"
+          value={mcpApiKey}
+          onChange={(e) => setDraftMcpApiKey(e.target.value)}
+          placeholder="Sent as x-portkey-api-key to every MCP server above"
+          className={inputClass}
+        />
+        <p className="text-xs text-muted-foreground mt-1.5">
+          Separate from the Sidebar&apos;s Gateway API Key, which is for LLM chat only — this key
+          is used only for MCP tool-call auth. Leave blank to fall back to the Gateway API Key.
         </p>
       </section>
 

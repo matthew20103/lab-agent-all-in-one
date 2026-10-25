@@ -61,22 +61,23 @@ restore strict zone segmentation.
 
 All of this happens in the admin dashboard (`https://dashboard.{domain}`) — no code changes.
 
-1. **Sidebar → AI Gateway → MCP API Key**: set this to the `MCP_TOKEN_LAB_DIRECT` value from
-   setup. Leave **Gateway API Key** untouched (it stays the real Portkey key). These are two
-   separate fields/config values: `gateway_api_key` is used only for LLM chat-completions
-   routing (`get_llm_client`), `mcp_api_key` only for MCP tool-call auth
-   (`mcp_sessions_context`) — changing one never affects the other. (If `mcp_api_key` is left
-   blank, MCP auth falls back to `gateway_api_key`, which was the old, broken, single-shared-key
-   behavior — don't rely on that fallback here; set it explicitly.)
-2. **MCP Servers tab**:
-   - **MCP Gateway URL**: `http://lab-mcp-relay:8080` — the relay container
-     `lab-mcp-direct-enable.sh` started, reachable by name since it's joined to
-     `agent-backend`'s own network. Not the server's LAN IP or `127.0.0.1` — see the hairpin
-     NAT note above for why that doesn't work for same-host traffic.
-   - Add servers with slugs **exactly** `openserp`, `chroma`, `memory`, `postgres` — these
-     must match `mcp-hub`'s nginx route names character-for-character, since the backend
-     builds each tool's URL as `{MCP Gateway URL}/{slug}/mcp`. Enable the ones you want.
-3. **Verify**: use each server's **Test** button in the dashboard first (fastest feedback),
+All on the **MCP Servers tab** (`/dashboard/mcp-servers`):
+
+1. **MCP Gateway URL**: `http://lab-mcp-relay:8080` — the relay container
+   `lab-mcp-direct-enable.sh` started, reachable by name since it's joined to
+   `agent-backend`'s own network. Not the server's LAN IP or `127.0.0.1` — see the hairpin
+   NAT note above for why that doesn't work for same-host traffic.
+2. **MCP API Key**: set this to the `MCP_TOKEN_LAB_DIRECT` value from setup. Leave the
+   Sidebar's **Gateway API Key** untouched (it stays the real Portkey key, used only for LLM
+   chat) — these are two separate config values (`gateway_api_key` vs. `mcp_api_key`),
+   changing one never affects the other. (If MCP API Key is left blank, MCP auth falls back
+   to Gateway API Key, which was the old, broken, single-shared-key behavior — don't rely on
+   that fallback here; set it explicitly.)
+3. Add servers with slugs **exactly** `openserp`, `chroma`, `memory`, `postgres` — these
+   must match `mcp-hub`'s nginx route names character-for-character, since the backend
+   builds each tool's URL as `{MCP Gateway URL}/{slug}/mcp`. Enable the ones you want.
+4. Click **Save** (this saves the URL, API key, and server list together).
+5. **Verify**: use each server's **Test** button in the dashboard first (fastest feedback),
    then confirm in the actual chat UI — e.g. ask it to search the web and check that
    `openserp` fires, or ask it something that should pull from the knowledge base
    (`chroma`) or long-term memory (`memory`).
@@ -101,9 +102,9 @@ needs a restart to pick up its pinned `ai-net` subnet
    scanning, per-agent access grants).
 2. **Back in the dashboard's MCP Servers tab**, change **MCP Gateway URL** to the AI Gateway's
    own MCP endpoint (not `mcp-hub` directly anymore).
-3. **Sidebar → AI Gateway → MCP API Key**: set it to the real Portkey API key (or clear it —
-   with it blank, MCP auth falls back to **Gateway API Key**, which is already the real Portkey
-   key for chat, so clearing is equivalent here since both tiers now use the same real
+3. **Same tab, MCP API Key**: set it to the real Portkey API key (or clear it —
+   with it blank, MCP auth falls back to the Sidebar's **Gateway API Key**, which is already
+   the real Portkey key for chat, so clearing is equivalent here since both tiers now use the same real
    gateway).
 4. **Verify**: same Test buttons and chat prompts as Task 1, but now also confirm each tool
    call shows up in the AI Gateway's own logs/traces, and that a response flagged by AIRS
