@@ -411,7 +411,18 @@ sudo ufw --force enable >/dev/null
 # actively Conflicts/Replaces `ufw` on Ubuntu 24.04 (installing one removes the other).
 DOCKER_USER_RULE="iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s ${GATEWAY_SOURCE_IP} -j DROP 2>/dev/null || iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s ${GATEWAY_SOURCE_IP} -j DROP"
 
+# Must be evaluated BEFORE the DROP rule above (confirmed via packet trace on a live
+# deployment): a published-port connection's reply traffic isn't un-DNAT'd before
+# DOCKER-USER sees it, so the reply packet still shows the container's raw (non-gateway)
+# address at this point. Without this ACCEPT, the DROP rule above matches the reply itself,
+# not just unwanted new connections — so the AI Gateway's own requests would connect, get a
+# response from mcp-hub, and then hang forever waiting for a reply that gets silently
+# dropped on the way back out. Since both rules insert at the head of the chain, running this
+# AFTER the DROP rule's setup is what puts it first.
+ESTABLISHED_RULE="iptables -C DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -I DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"
+
 sudo sh -c "$DOCKER_USER_RULE"
+sudo sh -c "$ESTABLISHED_RULE"
 
 sudo tee /etc/systemd/system/agent-all-in-one-docker-user.service >/dev/null <<EOF
 [Unit]
@@ -422,7 +433,7 @@ Requires=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c '${DOCKER_USER_RULE}'
+ExecStart=/bin/sh -c '${DOCKER_USER_RULE} && ${ESTABLISHED_RULE}'
 
 [Install]
 WantedBy=multi-user.target
