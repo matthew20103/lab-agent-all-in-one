@@ -1,17 +1,10 @@
 # Public: http://<UBUNTU_IP>:8080/openserp/mcp  ->  openserp-mcp:3333/mcp
 #
-# Accepts EITHER this server's own bearer token (the real, production path — what the AI
-# Gateway uses) OR the shared MCP_TOKEN_LAB_DIRECT token via the x-portkey-api-key header
-# (a lab-only shortcut: agent-backend's MCP client always sends that header/value pair
-# unconditionally to whatever mcp_gateway_url it's pointed at, so this lets candidates point
-# it straight at mcp-hub for the "direct" lab task without any code changes). One shared
-# token for every server here is intentionally weaker than the per-server tokens below — that
-# contrast is the point of the lab.
-#
-# Implemented via error_page + a named fallback location rather than multiple sequential
-# `if` blocks with a shared `set` variable — the latter is a commonly-used idiom but proved
-# unreliable in practice (see nginx's own "if is evil" docs). Each `if` here does nothing but
-# a single `return`, which is the one combination nginx's docs call unconditionally safe.
+# deploy.sh's smoke test finds this route's expected token name via the FIRST
+# "MCP_TOKEN_[A-Z0-9_]+" match in this file (grep ... | head -n1) — keep
+# ${MCP_TOKEN_OPENSERP} as that first match. Don't mention any other MCP_TOKEN_* name above
+# this line, even in a comment: the lab-direct explanation below is deliberately placed
+# after it for that reason.
 location /openserp/ {
     error_page 418 = @openserp_lab_direct;
     recursive_error_pages on;
@@ -24,6 +17,14 @@ location /openserp/ {
     include /etc/nginx/snippets/mcp-proxy.conf;
 }
 
+# Fallback: accepts the shared MCP_TOKEN_LAB_DIRECT token via the x-portkey-api-key header
+# (a lab-only shortcut — agent-backend's MCP client always sends that header/value pair
+# unconditionally to whatever mcp_gateway_url it's pointed at, so this lets candidates point
+# it straight at mcp-hub for the "direct" lab task without any code changes). One shared
+# token for every server here is intentionally weaker than the per-server token above — that
+# contrast is the point of the lab. Implemented as a separate named location (reached only via
+# the error_page above) rather than a second condition in the same location, since nginx's
+# `if` is only unconditionally safe when it contains nothing but a single `return`.
 location @openserp_lab_direct {
     if ($http_x_portkey_api_key != "${MCP_TOKEN_LAB_DIRECT}") {
         return 401;
