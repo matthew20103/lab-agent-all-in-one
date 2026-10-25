@@ -33,7 +33,7 @@ def _without_user_id(input_schema: dict | None) -> dict:
     return schema
 
 
-async def get_mcp_tool_schemas(slugs: list[str], mcp_gateway_url: str, gateway_api_key: str, user_email: str | None = None, max_attempts: int = 2) -> tuple[list, dict, list]:
+async def get_mcp_tool_schemas(slugs: list[str], mcp_gateway_url: str, mcp_api_key: str, user_email: str | None = None, max_attempts: int = 2) -> tuple[list, dict, list]:
     """
     For each AI Gateway MCP server slug, open a session, list tools, and convert
     to OpenAI function-calling schema format. Retries a slug up to `max_attempts`
@@ -59,7 +59,7 @@ async def get_mcp_tool_schemas(slugs: list[str], mcp_gateway_url: str, gateway_a
     async def _connect_slug(slug: str):
         url = f"{base}/{slug}/mcp"
         user_scoped = slug in USER_SCOPED_MCP_SLUGS
-        headers = {"x-portkey-api-key": gateway_api_key}
+        headers = {"x-portkey-api-key": mcp_api_key}
         if user_scoped:
             # Not relied on yet (the wrapper reads user_id); only useful if the
             # AI Gateway forwards it and the wrapper switches to header identity.

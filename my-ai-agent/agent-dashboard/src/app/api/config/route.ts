@@ -4,11 +4,12 @@ import redis from '@/lib/redis'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const [prompt, connMethod, gatewayUrl, gatewayApiKey, visionCapable] = await redis.mget(
+  const [prompt, connMethod, gatewayUrl, gatewayApiKey, mcpApiKey, visionCapable] = await redis.mget(
     'config:system_prompt',
     'config:connection_method',
     'config:gateway_url',
     'config:gateway_api_key',
+    'config:mcp_api_key',
     'config:vision_capable',
   )
 
@@ -17,6 +18,7 @@ export async function GET() {
     connection_method: connMethod ?? 'websocket',
     gateway_url: gatewayUrl || process.env.PORTKEY_GATEWAY_URL || '',
     gateway_api_key: gatewayApiKey ?? '',
+    mcp_api_key: mcpApiKey ?? '',
     vision_capable: visionCapable === 'true',
   })
 }
@@ -29,6 +31,7 @@ export async function POST(req: Request) {
   if (body.connection_method !== undefined) pipeline.set('config:connection_method', body.connection_method)
   if (body.gateway_url !== undefined) pipeline.set('config:gateway_url', body.gateway_url)
   if (body.gateway_api_key !== undefined) pipeline.set('config:gateway_api_key', body.gateway_api_key)
+  if (body.mcp_api_key !== undefined) pipeline.set('config:mcp_api_key', body.mcp_api_key)
   if (body.vision_capable !== undefined) pipeline.set('config:vision_capable', body.vision_capable ? 'true' : 'false')
 
   await pipeline.exec()

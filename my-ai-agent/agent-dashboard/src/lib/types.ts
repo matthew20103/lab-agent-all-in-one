@@ -3,6 +3,7 @@ export interface RedisConfig {
   connection_method: string
   gateway_url: string
   gateway_api_key: string
+  mcp_api_key: string
   vision_capable: boolean
 }
 

@@ -38,6 +38,7 @@ export function Sidebar() {
   // Typed fields keep a local draft and save on the button, so a half-typed URL never goes live.
   const [draftGatewayUrl, setDraftGatewayUrl] = useState<string | null>(null)
   const [draftGatewayKey, setDraftGatewayKey] = useState<string | null>(null)
+  const [draftMcpApiKey, setDraftMcpApiKey] = useState<string | null>(null)
   const [gatewaySaved, setGatewaySaved] = useState(false)
 
   if (!config) {
@@ -55,14 +56,21 @@ export function Sidebar() {
 
   const gatewayUrl = draftGatewayUrl ?? config.gateway_url
   const gatewayKey = draftGatewayKey ?? config.gateway_api_key
-  const gatewayDirty = gatewayUrl !== config.gateway_url || gatewayKey !== config.gateway_api_key
+  const mcpApiKey = draftMcpApiKey ?? config.mcp_api_key
+  const gatewayDirty =
+    gatewayUrl !== config.gateway_url || gatewayKey !== config.gateway_api_key || mcpApiKey !== config.mcp_api_key
   const enabledMcp = mcp?.servers.filter((s) => s.enabled).length
   const enabledA2a = a2a?.agents.filter((a) => a.enabled).length
 
   const handleSaveGateway = async () => {
-    await update({ gateway_url: gatewayUrl.trim(), gateway_api_key: gatewayKey.trim() })
+    await update({
+      gateway_url: gatewayUrl.trim(),
+      gateway_api_key: gatewayKey.trim(),
+      mcp_api_key: mcpApiKey.trim(),
+    })
     setDraftGatewayUrl(null)
     setDraftGatewayKey(null)
+    setDraftMcpApiKey(null)
     setGatewaySaved(true)
     setTimeout(() => setGatewaySaved(false), 2000)
   }
@@ -97,6 +105,13 @@ export function Sidebar() {
             value={gatewayKey}
             onChange={(e) => setDraftGatewayKey(e.target.value)}
             placeholder="Gateway API Key"
+            className={inputClass}
+          />
+          <input
+            type="password"
+            value={mcpApiKey}
+            onChange={(e) => setDraftMcpApiKey(e.target.value)}
+            placeholder="MCP API Key (optional — defaults to Gateway API Key)"
             className={inputClass}
           />
           <button

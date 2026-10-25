@@ -13,6 +13,14 @@ access control.
 
 ---
 
+## One-time prerequisite: deploy the `mcp_api_key` decoupling fix
+
+Task 1 requires a small code change (a dedicated `mcp_api_key` config value, separate from
+`gateway_api_key`) to `agent-backend` and `agent-dashboard`. Without it, the only MCP-auth
+field available is the one also used for LLM chat completions, and pointing it at the lab
+token breaks normal chat. Deploy this once (`./deploy.sh` or your usual redeploy path) before
+running Task 1 for the first time.
+
 ## Why this needs one small firewall exception (admin, one-time)
 
 `agent-backend` and `mcp-hub` are deliberately separate Docker Compose projects on separate
@@ -45,13 +53,13 @@ restore strict zone segmentation.
 
 All of this happens in the admin dashboard (`https://dashboard.{domain}`) — no code changes.
 
-1. **Gateway Mode → "Direct (No Gateway)".** Do this first. The gateway API key field you're
-   about to repurpose below is shared between LLM chat-completions routing and MCP
-   authentication in the current code — leaving Gateway Mode on a Portkey-routed setting
-   while you overwrite that key with the lab token would break normal chat replies too.
-   Direct mode sends LLM calls straight to DeepSeek/Ollama instead, so it doesn't depend on
-   this key at all (Prisma AIRS prompt scanning is independent of this setting and keeps
-   working either way).
+1. **Sidebar → AI Gateway → MCP API Key**: set this to the `MCP_TOKEN_LAB_DIRECT` value from
+   setup. Leave **Gateway API Key** untouched (it stays the real Portkey key). These are two
+   separate fields/config values: `gateway_api_key` is used only for LLM chat-completions
+   routing (`get_llm_client`), `mcp_api_key` only for MCP tool-call auth
+   (`mcp_sessions_context`) — changing one never affects the other. (If `mcp_api_key` is left
+   blank, MCP auth falls back to `gateway_api_key`, which was the old, broken, single-shared-key
+   behavior — don't rely on that fallback here; set it explicitly.)
 2. **MCP Servers tab**:
    - **MCP Gateway URL**: `http://<server-LAN-IP>:8080` — use the real LAN IP printed by
      `lab-mcp-direct-enable.sh`, not `127.0.0.1` (that resolves to the agent's own container,
@@ -59,7 +67,6 @@ All of this happens in the admin dashboard (`https://dashboard.{domain}`) — no
    - Add servers with slugs **exactly** `openserp`, `chroma`, `memory`, `postgres` — these
      must match `mcp-hub`'s nginx route names character-for-character, since the backend
      builds each tool's URL as `{MCP Gateway URL}/{slug}/mcp`. Enable the ones you want.
-   - **Gateway API Key**: the `MCP_TOKEN_LAB_DIRECT` value from setup.
 3. **Verify**: use each server's **Test** button in the dashboard first (fastest feedback),
    then confirm in the actual chat UI — e.g. ask it to search the web and check that
    `openserp` fires, or ask it something that should pull from the knowledge base
@@ -82,11 +89,12 @@ previous section isn't active yet, or `agent-backend` needs a restart to pick up
    Follow the same steps `my-mcp-tools/mcp-hub-guide.md` §7 already documents (URL format,
    Streamable HTTP transport, least-privilege tool allow-listing, turning on AIRS response
    scanning, per-agent access grants).
-2. **Back in the dashboard's MCP Servers tab**, change:
-   - **MCP Gateway URL** → the AI Gateway's own MCP endpoint (not `mcp-hub` directly anymore)
-   - **Gateway API Key** → the real Portkey API key
-3. Optionally switch **Gateway Mode** back to a Portkey-routed mode too, now that the shared
-   key is a real gateway credential again rather than the lab token.
+2. **Back in the dashboard's MCP Servers tab**, change **MCP Gateway URL** to the AI Gateway's
+   own MCP endpoint (not `mcp-hub` directly anymore).
+3. **Sidebar → AI Gateway → MCP API Key**: set it to the real Portkey API key (or clear it —
+   with it blank, MCP auth falls back to **Gateway API Key**, which is already the real Portkey
+   key for chat, so clearing is equivalent here since both tiers now use the same real
+   gateway).
 4. **Verify**: same Test buttons and chat prompts as Task 1, but now also confirm each tool
    call shows up in the AI Gateway's own logs/traces, and that a response flagged by AIRS
    (e.g. the Postgres demo DB's synthetic SSNs/card numbers) actually gets scanned or

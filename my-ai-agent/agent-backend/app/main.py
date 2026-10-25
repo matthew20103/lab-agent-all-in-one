@@ -378,6 +378,7 @@ async def get_live_config():
         vision_capable_raw = await redis_client.get("config:vision_capable")
         gateway_url_cfg = await redis_client.get("config:gateway_url")
         gateway_api_key_cfg = await redis_client.get("config:gateway_api_key")
+        mcp_api_key_cfg = await redis_client.get("config:mcp_api_key")
         mcp_gateway_url_cfg = await redis_client.get("config:mcp_gateway_url")
         mcp_servers_raw = await redis_client.get("config:mcp_servers")
         mcp_slugs_raw = await redis_client.get("config:mcp_server_slugs")
@@ -391,12 +392,13 @@ async def get_live_config():
             "vision_capable": vision_capable_raw.decode('utf-8') == "true" if vision_capable_raw else False,
             "gateway_url": gateway_url_cfg.decode('utf-8') if gateway_url_cfg else PORTKEY_GATEWAY_URL,
             "gateway_api_key": gateway_api_key_cfg.decode('utf-8') if gateway_api_key_cfg else PORTKEY_API_KEY,
+            "mcp_api_key": mcp_api_key_cfg.decode('utf-8') if mcp_api_key_cfg else "",
             "mcp_gateway_url": mcp_gateway_url_cfg.decode('utf-8') if mcp_gateway_url_cfg else PORTKEY_MCP_GATEWAY_URL,
             "mcp_server_slugs": mcp_server_slugs,
             "a2a_agents": _enabled_a2a_agents(a2a_agents_raw),
         }
     except Exception as e:
-        return {"system_prompt": "You are a helpful AI assistant." + MARKDOWN_FORMATTING_GUARDRAIL, "vision_capable": False, "gateway_url": PORTKEY_GATEWAY_URL, "gateway_api_key": PORTKEY_API_KEY, "mcp_gateway_url": PORTKEY_MCP_GATEWAY_URL, "mcp_server_slugs": PORTKEY_MCP_SERVER_SLUGS_DEFAULT, "a2a_agents": []}
+        return {"system_prompt": "You are a helpful AI assistant." + MARKDOWN_FORMATTING_GUARDRAIL, "vision_capable": False, "gateway_url": PORTKEY_GATEWAY_URL, "gateway_api_key": PORTKEY_API_KEY, "mcp_api_key": "", "mcp_gateway_url": PORTKEY_MCP_GATEWAY_URL, "mcp_server_slugs": PORTKEY_MCP_SERVER_SLUGS_DEFAULT, "a2a_agents": []}
 
 
 # ==========================================
@@ -418,12 +420,17 @@ async def mcp_sessions_context(config: dict, user_email: str | None = None, sess
     slugs = config.get("mcp_server_slugs")
     mcp_gateway_url = config.get("mcp_gateway_url")
     gateway_api_key = config.get("gateway_api_key") or PORTKEY_API_KEY
+    # Separate from gateway_api_key so MCP auth (e.g. a lab token pointed straight at
+    # mcp-hub) can be changed without affecting LLM chat-completions routing, which
+    # always uses gateway_api_key via get_llm_client(). Falls back to gateway_api_key
+    # when unset, matching the pre-existing shared-key behavior.
+    mcp_api_key = config.get("mcp_api_key") or gateway_api_key
 
     async def _no_mcp():
         return [], {}, []
 
     mcp_load = (
-        tools.get_mcp_tool_schemas(slugs, mcp_gateway_url, gateway_api_key, user_email=user_email)
+        tools.get_mcp_tool_schemas(slugs, mcp_gateway_url, mcp_api_key, user_email=user_email)
         if slugs and mcp_gateway_url else _no_mcp()
     )
     a2a_load = a2a_agents.load_a2a_tools(

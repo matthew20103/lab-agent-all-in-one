@@ -19,9 +19,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid slug.' }, { status: 400 })
   }
 
-  const [savedUrl, savedKey] = await redis.mget('config:mcp_gateway_url', 'config:gateway_api_key')
+  const [savedUrl, savedKey, savedMcpKey] = await redis.mget(
+    'config:mcp_gateway_url',
+    'config:gateway_api_key',
+    'config:mcp_api_key',
+  )
   const base = (savedUrl || process.env.PORTKEY_MCP_GATEWAY_URL || '').replace(/\/+$/, '')
-  const apiKey = savedKey || process.env.PORTKEY_API_KEY || ''
+  // mcp_api_key (set independently of the LLM's gateway_api_key) takes precedence when set,
+  // matching main.py's mcp_sessions_context() fallback chain.
+  const apiKey = savedMcpKey || savedKey || process.env.PORTKEY_API_KEY || ''
   if (!base) {
     return NextResponse.json<McpTestResult>({ ok: false, error: 'No MCP Gateway URL is saved.' })
   }
