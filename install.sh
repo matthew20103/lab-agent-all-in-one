@@ -409,7 +409,18 @@ sudo ufw --force enable >/dev/null
 # restricted directly in the DOCKER-USER chain instead, same as mcp-hub-guide.md section 6 —
 # but persisted via a small systemd unit rather than the `iptables-persistent` package, which
 # actively Conflicts/Replaces `ufw` on Ubuntu 24.04 (installing one removes the other).
-DOCKER_USER_RULE="iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s ${GATEWAY_SOURCE_IP} -j DROP 2>/dev/null || iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 ! -s ${GATEWAY_SOURCE_IP} -j DROP"
+#
+# Scoped with --ctorigdst to this server's own IP, not just --ctorigdstport 8080 alone —
+# confirmed via packet trace on a live deployment: matching on port number alone also catches
+# any OTHER container's own outbound connections to port 8080 on a completely different host
+# (e.g. agent-backend calling an AI Gateway that happens to expose something on port 8080
+# too), silently dropping traffic that has nothing to do with mcp-hub at all. --ctorigdst
+# tracks the connection's pre-DNAT destination, so it stays correct even though inbound
+# traffic to mcp-hub has its destination rewritten to the container's own IP by the time this
+# chain evaluates it.
+SERVER_IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+[ -n "$SERVER_IP" ] || { echo "ERROR: couldn't auto-detect this server's own LAN IP (ip route get 1.1.1.1)." >&2; exit 1; }
+DOCKER_USER_RULE="iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctorigdst ${SERVER_IP} ! -s ${GATEWAY_SOURCE_IP} -j DROP 2>/dev/null || iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctorigdst ${SERVER_IP} ! -s ${GATEWAY_SOURCE_IP} -j DROP"
 
 # Must be evaluated BEFORE the DROP rule above (confirmed via packet trace on a live
 # deployment): a published-port connection's reply traffic isn't un-DNAT'd before
