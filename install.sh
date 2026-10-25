@@ -12,7 +12,7 @@
 # (mcp-hub/scripts/deploy.sh already enforces this and will refuse to run otherwise).
 #
 # Assumes this whole project folder is already on the server (e.g. copied over with
-# `rsync`/`scp`, the same way mcp-hub-guide.md already describes).
+# `rsync`/`scp` — see LAB_GUIDE.md section E).
 
 set -euo pipefail
 
@@ -235,6 +235,13 @@ PORTKEY_MCP_GATEWAY_URL="${PORTKEY_MCP_GATEWAY_URL:-$default_portkey_mcp_gw}"
 
 default_portkey_slugs="$(existing PORTKEY_MCP_SERVER_SLUGS "$AGENT_ENV")"
 read -rp "Portkey MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
+
+# mem0's own OpenAI-compatible REST client needs the gateway's plain LLM API endpoint — a
+# different host:port/path than PORTKEY_GATEWAY_URL above on some gateway setups, so it's its
+# own prompt rather than reused.
+default_mem0_gw="$(existing MEM0_GATEWAY_URL "$ROOT/my-mcp-tools/mcp-hub/.env")"
+read -rp "AI Gateway's LLM API URL for mem0 memory, e.g. http://<gateway-host>/v1 [${default_mem0_gw}]: " MEM0_GATEWAY_URL
+MEM0_GATEWAY_URL="${MEM0_GATEWAY_URL:-$default_mem0_gw}"
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
 existing_basic_auth="$(unescape_dollars "$(existing BASIC_AUTH_USERS "$AGENT_ENV")")"
@@ -328,6 +335,7 @@ upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_SECRET "$(escape_dollars "$CYBER
 upsert_env_var "$CHAT_ENV" NEXTAUTH_SECRET "$CHAT_NEXTAUTH_SECRET"
 
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
+upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_GATEWAY_URL "$MEM0_GATEWAY_URL"
 
 chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
 
@@ -340,6 +348,7 @@ for pair in \
   "CYBERARK_JWKS_URI:$CYBERARK_JWKS_URI" \
   "CYBERARK_USER_CLIENT_ID:$CYBERARK_USER_CLIENT_ID" \
   "CYBERARK_USER_CLIENT_SECRET:$CYBERARK_USER_CLIENT_SECRET" \
+  "MEM0_GATEWAY_URL:$MEM0_GATEWAY_URL" \
 ; do
   name="${pair%%:*}"
   val="${pair#*:}"
@@ -376,7 +385,7 @@ else
     echo "   created ~/mcp-secrets/memory.env"
   else
     echo "   WARNING: no AI Gateway API key given — skipped. The memory MCP server won't start"
-    echo "   until ~/mcp-secrets/memory.env is created (mcp-hub-guide.md section 14.1, or re-run this script)."
+    echo "   until ~/mcp-secrets/memory.env is created (re-run this script to create it)."
   fi
 fi
 
@@ -406,8 +415,8 @@ sudo ufw allow 443/tcp >/dev/null
 sudo ufw --force enable >/dev/null
 
 # Docker-published ports bypass ufw entirely, so the MCP hub's bearer-token proxy (8080) is
-# restricted directly in the DOCKER-USER chain instead, same as mcp-hub-guide.md section 6 —
-# but persisted via a small systemd unit rather than the `iptables-persistent` package, which
+# restricted directly in the DOCKER-USER chain instead (see LAB_GUIDE.md section D.4) — but
+# persisted via a small systemd unit rather than the `iptables-persistent` package, which
 # actively Conflicts/Replaces `ufw` on Ubuntu 24.04 (installing one removes the other).
 #
 # Scoped with --ctorigdst to this server's own IP, not just --ctorigdstport 8080 alone —

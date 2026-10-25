@@ -217,7 +217,7 @@ app.add_middleware(
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 SESSION_TTL = 3600
 
-PORTKEY_GATEWAY_URL = os.getenv("PORTKEY_GATEWAY_URL", "http://192.168.110.25:8787/v1")
+PORTKEY_GATEWAY_URL = os.getenv("PORTKEY_GATEWAY_URL", "")
 PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY", "")
 # MCP servers are hosted behind the AI Gateway's own MCP port — a different
 # host:port from the chat-completions gateway above, not derived from it.

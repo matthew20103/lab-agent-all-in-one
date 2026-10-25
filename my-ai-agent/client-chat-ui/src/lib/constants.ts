@@ -1,4 +1,4 @@
-export const AGENT_BASE_URL = process.env.NEXT_PUBLIC_AGENT_BASE_URL ?? 'agent.matthewwan.dev:8443'
+export const AGENT_BASE_URL = process.env.NEXT_PUBLIC_AGENT_BASE_URL ?? 'agent.example.com'
 export const AGENT_WSS_URL = `wss://${AGENT_BASE_URL}/ws`
 export const AGENT_REST_URL = `https://${AGENT_BASE_URL}/api/v1/chat`
 export const AGENT_STREAM_URL = `https://${AGENT_BASE_URL}/api/v1/chat/stream`

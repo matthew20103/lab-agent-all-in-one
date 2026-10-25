@@ -1,8 +1,9 @@
 # Agent memory: mem0 v2.2.1 REST server + dashboard, with our MCP wrapper in ./mcp.
 # Dashboard: https://memory.${BASE_DOMAIN}   mem0 API: https://memapi.${BASE_DOMAIN}   (both via edge-proxy)
 # MCP: http://<UBUNTU_IP>:8080/memory/mcp (via mcp-proxy)
-# All secrets come from ~/mcp-secrets/memory.env on the server (see mcp-hub-guide.md, section 14).
-# BASE_DOMAIN comes from mcp-hub/.env (written by install.sh), not ~/mcp-secrets/ (not a secret).
+# All secrets come from ~/mcp-secrets/memory.env on the server (see LAB_GUIDE.md Appendix 3.8).
+# BASE_DOMAIN and MEM0_GATEWAY_URL come from mcp-hub/.env (written by install.sh), not
+# ~/mcp-secrets/ (neither is a secret).
 
 services:
   memory-mcp:
@@ -36,7 +37,7 @@ services:
       POSTGRES_HOST: memory-postgres
       APP_DB_NAME: mem0_app
       HISTORY_DB_PATH: /app/history/history.db
-      OPENAI_BASE_URL: http://192.168.110.161/v1      # AI Gateway LLM API (port 80)
+      OPENAI_BASE_URL: ${MEM0_GATEWAY_URL}
       MEM0_DEFAULT_LLM_MODEL: "@google-vertex-sep/gemini-3.6-flash"
       DASHBOARD_URL: https://memory.${BASE_DOMAIN}
       AUTH_DISABLED: "false"
