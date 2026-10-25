@@ -340,3 +340,14 @@ Notes:
       `https://memapi.{domain}`; create a collection in `chroma-ui`, upload a
       test file, confirm `chroma_query` via MCP returns it, then delete it
 - [ ] Decommission the three old servers once verified
+
+---
+
+## 10. Running this as a candidate lab (optional)
+
+See `LAB.md` for a two-task exercise built on top of this same deployment: configure the
+agent to call MCP tools directly against `mcp-hub` (bypassing the AI Gateway), then
+reconfigure so every call routes through the gateway instead. Needs one additional,
+separately-toggleable firewall exception (`lab-mcp-direct-enable.sh`/`-disable.sh`) — it
+doesn't change anything else in this architecture, and `mcp-hub`'s nginx proxy accepts the
+lab's shared token *alongside* its normal per-server tokens, not instead of them.

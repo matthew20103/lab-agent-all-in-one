@@ -58,3 +58,8 @@ services:
 networks:
   ai-net:
     driver: bridge
+    # Pinned (not auto-assigned) so lab-mcp-direct-enable.sh has a stable subnet to reference
+    # in its firewall rule, regardless of recreate order relative to other Docker networks.
+    ipam:
+      config:
+        - subnet: 172.28.61.0/24
