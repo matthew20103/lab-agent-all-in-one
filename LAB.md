@@ -21,30 +21,38 @@ field available is the one also used for LLM chat completions, and pointing it a
 token breaks normal chat. Deploy this once (`./deploy.sh` or your usual redeploy path) before
 running Task 1 for the first time.
 
-## Why this needs one small firewall exception (admin, one-time)
+## Why this needs one small relay container (admin, one-time)
 
 `agent-backend` and `mcp-hub` are deliberately separate Docker Compose projects on separate
 networks — `mcp-hub`'s bearer-token proxy (port 8080) is normally firewalled to only the real
 AI Gateway's IP, so the three tiers keep behaving like genuinely separate, segmented
-servers rather than one flat network. Task 1 needs `agent-backend` to reach that port too, so
+servers rather than one flat network. Task 1 needs `agent-backend` to reach that proxy too, so
 before candidates start:
 
 ```bash
 ./lab-mcp-direct-enable.sh
 ```
 
-This adds a **separate, clearly-labeled** `DOCKER-USER` firewall rule allow-listing
-`agent-backend`'s own container subnet — it does not touch or widen the AI Gateway's existing
-rule. It prints two things candidates will need:
+This starts a small, disposable, single-purpose relay container (`lab-mcp-relay`, plain
+`socat`) that's a member of both `agent-backend`'s own Docker network and `mcp-hub`'s — it only
+forwards port 8080 to `mcp-proxy` and can't be used to reach anything else over there. (An
+earlier version of this script instead opened a `DOCKER-USER` firewall exception for the
+host's published port, but a container on the *same host* reaching that port via the host's
+own LAN IP hits a well-known Linux NAT/routing-order bug — Docker's hairpin masquerade
+rewrites the request's source to a local address, and the kernel's reply-routing decision runs
+before that gets un-rewritten, so the reply is delivered to the host itself instead of being
+forwarded back. This never affects the real AI Gateway, which is a genuinely separate machine
+reaching `mcp-hub` over an actual network link — only same-host lab testing hit it.)
+
+It prints the one thing candidates will need:
 
 - `MCP_TOKEN_LAB_DIRECT` — the shared lab-only token (from `~/mcp-secrets/hub.env`)
-- the server's LAN IP
 
 If `MCP_TOKEN_LAB_DIRECT` isn't printed yet, run `(cd my-mcp-tools/mcp-hub && ./scripts/deploy.sh)`
 once to generate it (it's auto-created the same way every other `MCP_TOKEN_*` is), then re-run
 `lab-mcp-direct-enable.sh`.
 
-When the lab session is over, run `./lab-mcp-direct-disable.sh` to remove the exception and
+When the lab session is over, run `./lab-mcp-direct-disable.sh` to remove the relay and
 restore strict zone segmentation.
 
 ---
@@ -61,9 +69,10 @@ All of this happens in the admin dashboard (`https://dashboard.{domain}`) — no
    blank, MCP auth falls back to `gateway_api_key`, which was the old, broken, single-shared-key
    behavior — don't rely on that fallback here; set it explicitly.)
 2. **MCP Servers tab**:
-   - **MCP Gateway URL**: `http://<server-LAN-IP>:8080` — use the real LAN IP printed by
-     `lab-mcp-direct-enable.sh`, not `127.0.0.1` (that resolves to the agent's own container,
-     not the host).
+   - **MCP Gateway URL**: `http://lab-mcp-relay:8080` — the relay container
+     `lab-mcp-direct-enable.sh` started, reachable by name since it's joined to
+     `agent-backend`'s own network. Not the server's LAN IP or `127.0.0.1` — see the hairpin
+     NAT note above for why that doesn't work for same-host traffic.
    - Add servers with slugs **exactly** `openserp`, `chroma`, `memory`, `postgres` — these
      must match `mcp-hub`'s nginx route names character-for-character, since the backend
      builds each tool's URL as `{MCP Gateway URL}/{slug}/mcp`. Enable the ones you want.
@@ -73,10 +82,11 @@ All of this happens in the admin dashboard (`https://dashboard.{domain}`) — no
    (`chroma`) or long-term memory (`memory`).
 
 If a Test fails, check `docker compose logs -f` on both `mcp-hub`'s `proxy` service and
-`agent-backend`'s `agent` service while retrying — a `401` there means the token/URL isn't
-matching; a connection failure/timeout more likely means the firewall exception from the
-previous section isn't active yet, or `agent-backend` needs a restart to pick up its pinned
-`ai-net` subnet (`docker compose up -d --force-recreate` in `my-ai-agent/agent-backend/`).
+`agent-backend`'s `agent` service while retrying — a `401` there means the token isn't
+matching; a connection failure/timeout more likely means `lab-mcp-direct-enable.sh` hasn't
+been run (or `lab-mcp-relay` isn't up — `docker ps | grep lab-mcp-relay`), or `agent-backend`
+needs a restart to pick up its pinned `ai-net` subnet
+(`docker compose up -d --force-recreate` in `my-ai-agent/agent-backend/`).
 
 ---
 
@@ -108,6 +118,6 @@ previous section isn't active yet, or `agent-backend` needs a restart to pick up
 ```bash
 ./lab-mcp-direct-disable.sh
 ```
-Removes the firewall exception. The dashboard's MCP config (gateway URL/key, enabled
+Removes the relay container. The dashboard's MCP config (gateway URL/key, enabled
 servers) isn't reset by this — reset it by hand in the dashboard if you're resetting the lab
 for the next candidate.
