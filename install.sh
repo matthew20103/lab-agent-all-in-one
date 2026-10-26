@@ -141,6 +141,31 @@ read -rp "Base domain, e.g. example.com [${default_domain}]: " BASE_DOMAIN
 BASE_DOMAIN="${BASE_DOMAIN:-$default_domain}"
 [ -n "$BASE_DOMAIN" ] || { echo "ERROR: a base domain is required." >&2; exit 1; }
 
+# Every service here is reached by subdomain (agent.${BASE_DOMAIN}, chat.${BASE_DOMAIN}, ...),
+# so one container calling another by that hostname needs it to actually resolve via real DNS.
+# .local/.test/.example/.invalid/.localhost/.internal are reserved special-use names that are
+# GUARANTEED to never resolve that way (.local specifically needs mDNS, which doesn't work from
+# inside a Docker container at all; the others are reserved by IANA so they're never delegated)
+# — confirmed twice in the field as students picked one of these, got EAI_AGAIN/ENOTFOUND deep
+# in a container's auth logs, and it surfaced only later as a confusing "wrong password" error.
+# Fail fast here instead, with the actual fix, rather than let that happen again.
+case ".${BASE_DOMAIN}." in
+  *.local.|*.test.|*.example.|*.invalid.|*.localhost.|*.internal.)
+    detected_ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+    echo "ERROR: '${BASE_DOMAIN}' ends in a reserved/special-use name that will NEVER resolve" >&2
+    echo "       via real DNS, even though it may resolve on your own machine right now." >&2
+    echo "       No real domain yet? Use nip.io instead — a free wildcard DNS service that" >&2
+    echo "       resolves ANY hostname with an IP embedded (dashes, not dots) straight to that" >&2
+    echo "       IP, with zero setup, and works correctly from inside containers. Try:" >&2
+    if [ -n "$detected_ip" ]; then
+      echo "         ${detected_ip//./-}.nip.io" >&2
+    else
+      echo "         <this-server's-ip-with-dashes-instead-of-dots>.nip.io" >&2
+    fi
+    exit 1
+    ;;
+esac
+
 default_email="$(existing ACME_EMAIL "$ROOT/edge-proxy/.env")"
 read -rp "Email for Let's Encrypt notifications [${default_email}]: " ACME_EMAIL
 ACME_EMAIL="${ACME_EMAIL:-$default_email}"
