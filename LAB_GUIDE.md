@@ -761,6 +761,25 @@ and instructs the model to always use it as `user_id` — never take this from a
 types. Dashboard at `{MEMORY_SUBDOMAIN}.{BASE_DOMAIN}` (`memory` by default) lets an admin
 browse/delete memories per user (e.g. for a "right to be forgotten" request).
 
+`MEM0_DEFAULT_LLM_MODEL`/`MEM0_DEFAULT_EMBEDDER_MODEL` (install.sh) and the dashboard's own
+**Configure** page both ultimately set the exact same thing — a config override persisted in
+mem0's own Postgres DB (`SELECT key, value FROM settings;` inside `memory-postgres`, key
+`config_overrides`) — so there's no need to use both; either is fine. If mem0 rejects an add
+with an error naming a DIFFERENT model than anything you configured (confirmed live: entering
+provider-routed model strings like `@your-provider-alias/text-embedding-005` for the embedder,
+yet the error names an unrelated chat model), don't assume it's this project's bug — test the
+exact model string directly against your gateway first, bypassing mem0 entirely:
+```bash
+curl -X POST http://<your-gateway-host>/v1/embeddings \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <key>" \
+  -d '{"model": "<the exact model string you configured>", "input": "hello world"}'
+```
+If that curl alone reproduces the same unexpected-model error, the problem is in your AI
+Gateway's own provider/virtual-key configuration, not in mem0 or this codebase — confirmed live:
+the API key itself was bound to a specific model on the gateway side, silently substituting it
+for whatever model the request actually asked for. Fix it in your gateway's own admin console
+(a separate key/virtual-key per model, or one not pinned to any single model).
+
 **Postgres (demo database)** — synthetic sensitive data (fake customers with SSNs/card numbers,
 employees with salaries/bank accounts) for guardrail demos. Safety comes from **database
 roles**, not the prompt: `list_schemas`/`list_tables`/`query` use a read-only role restricted to
