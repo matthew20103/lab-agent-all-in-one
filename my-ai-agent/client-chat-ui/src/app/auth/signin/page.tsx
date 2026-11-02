@@ -22,6 +22,13 @@ export default function SignInPage() {
     }
   }
 
+  // Baked in at build time from client-chat-ui/.env (see src/lib/constants.ts's
+  // NEXT_PUBLIC_AGENT_BASE_URL for the same pattern) — reflects whether install.sh's Idira
+  // prompts were actually filled in. Matches auth.ts's own idiraConfigured check, which is what
+  // actually registers (or skips) the 'cyberark' provider server-side; this just keeps the
+  // button from being shown when clicking it could only ever fail.
+  const idiraEnabled = process.env.NEXT_PUBLIC_IDIRA_ENABLED === 'true'
+
   return (
     <div className="min-h-dvh flex items-center justify-center bg-shell px-4">
       <div className="w-full max-w-sm space-y-6 p-8 border border-border rounded-window bg-card shadow-[0_20px_50px_-12px_rgba(0,0,0,0.18)]">
@@ -34,18 +41,22 @@ export default function SignInPage() {
           <p className="mt-3 text-sm text-muted-foreground">Sign in to continue</p>
         </div>
 
-        <button
-          onClick={() => signIn('cyberark', { callbackUrl: '/' }, { prompt: 'login' })}
-          className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
-          Sign in with Idira
-        </button>
+        {idiraEnabled && (
+          <>
+            <button
+              onClick={() => signIn('cyberark', { callbackUrl: '/' }, { prompt: 'login' })}
+              className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              Sign in with Idira
+            </button>
 
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground">or</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground">or</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+          </>
+        )}
 
         <form onSubmit={handleBasicAuthSubmit} className="space-y-3">
           <input

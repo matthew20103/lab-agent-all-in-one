@@ -52,6 +52,16 @@ async function refreshAccessToken(token: any) {
   }
 }
 
+// Idira SSO is optional — Basic Auth must keep working standalone with zero CyberArk config.
+// NextAuth validates every provider's config eagerly (an OIDC provider with an empty/invalid
+// `issuer` fails that check), so registering this unconditionally turns ANY sign-in attempt —
+// Basic Auth included, since it's the same NextAuth instance — into a generic "There is a
+// problem with the server configuration" error, not just a broken Idira button. Only register
+// it when actually configured.
+const idiraConfigured = Boolean(
+  process.env.CYBERARK_ISSUER && process.env.CYBERARK_USER_CLIENT_ID && process.env.CYBERARK_USER_CLIENT_SECRET,
+)
+
 const authConfig: NextAuthConfig = {
   trustHost: true,
   // Off by default — NextAuth's debug logger is the only place that prints the
@@ -65,19 +75,23 @@ const authConfig: NextAuthConfig = {
     maxAge: 60 * 60 * 24 * 365,
   },
   providers: [
-    {
-      id: 'cyberark',
-      name: 'Idira',
-      type: 'oidc',
-      issuer: process.env.CYBERARK_ISSUER,
-      clientId: process.env.CYBERARK_USER_CLIENT_ID,
-      clientSecret: process.env.CYBERARK_USER_CLIENT_SECRET,
-      // Idira doesn't recognize "offline_access" as a scope (rejects the whole
-      // authorization request with invalid_scope if requested) — its refresh
-      // tokens are issued based on the app's "Issue refresh tokens" console
-      // toggle alone, not a requested scope.
-      authorization: { params: { scope: 'openid email profile' } },
-    },
+    ...(idiraConfigured
+      ? [
+          {
+            id: 'cyberark',
+            name: 'Idira',
+            type: 'oidc' as const,
+            issuer: process.env.CYBERARK_ISSUER,
+            clientId: process.env.CYBERARK_USER_CLIENT_ID,
+            clientSecret: process.env.CYBERARK_USER_CLIENT_SECRET,
+            // Idira doesn't recognize "offline_access" as a scope (rejects the whole
+            // authorization request with invalid_scope if requested) — its refresh
+            // tokens are issued based on the app's "Issue refresh tokens" console
+            // toggle alone, not a requested scope.
+            authorization: { params: { scope: 'openid email profile' } },
+          },
+        ]
+      : []),
     Credentials({
       credentials: {
         username: { label: 'Username', type: 'text' },

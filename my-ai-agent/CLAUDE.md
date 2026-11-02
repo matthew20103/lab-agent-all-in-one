@@ -114,6 +114,16 @@ constructing it unconditionally at module load. Only the plain `Bearer` scheme i
 DPoP). See `LAB_GUIDE.md` section H for the full auth flow, including the client-side NextAuth
 details.
 
+**The same optionality applies client-side.** `client-chat-ui/src/lib/auth.ts` only registers
+the `cyberark` NextAuth provider when `CYBERARK_ISSUER`/`CYBERARK_USER_CLIENT_ID`/
+`CYBERARK_USER_CLIENT_SECRET` are all set (`idiraConfigured`) — NextAuth validates every
+provider's config eagerly, so registering an OIDC provider with an empty `issuer`
+unconditionally breaks **every** sign-in method through that same NextAuth instance (Basic Auth
+included) with a generic "There is a problem with the server configuration" error, confirmed
+live. `src/app/auth/signin/page.tsx` hides the "Sign in with Idira" button via the
+`NEXT_PUBLIC_IDIRA_ENABLED` build-time env var (written by `install.sh`, must stay in sync with
+`idiraConfigured`'s own condition) so it's never shown when clicking it could only ever fail.
+
 ## Conventions & gotchas
 
 - `.env` files and several Dockerfiles contain **real-looking secrets**. Treat them as live; do

@@ -450,6 +450,11 @@ upsert_env_var "$CHAT_ENV" NEXTAUTH_URL "https://${CHAT_SUBDOMAIN}.${BASE_DOMAIN
 upsert_env_var "$CHAT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
 upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_ID "$CYBERARK_USER_CLIENT_ID"
 upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_SECRET "$(escape_dollars "$CYBERARK_USER_CLIENT_SECRET")"
+# Read client-side (src/app/auth/signin/page.tsx) to decide whether to show the "Sign in with
+# Idira" button at all — must match src/lib/auth.ts's own idiraConfigured check (both keyed off
+# CYBERARK_ISSUER being set), or the button could be shown/hidden out of sync with whether the
+# provider is actually registered server-side.
+upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_IDIRA_ENABLED "$([ -n "$CYBERARK_ISSUER" ] && echo true || echo false)"
 upsert_env_var "$CHAT_ENV" NEXTAUTH_SECRET "$CHAT_NEXTAUTH_SECRET"
 
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
