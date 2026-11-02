@@ -761,14 +761,33 @@ and instructs the model to always use it as `user_id` — never take this from a
 types. Dashboard at `{MEMORY_SUBDOMAIN}.{BASE_DOMAIN}` (`memory` by default) lets an admin
 browse/delete memories per user (e.g. for a "right to be forgotten" request).
 
-`MEM0_DEFAULT_LLM_MODEL`/`MEM0_DEFAULT_EMBEDDER_MODEL` (install.sh) and the dashboard's own
-**Configure** page both ultimately set the exact same thing — a config override persisted in
-mem0's own Postgres DB (`SELECT key, value FROM settings;` inside `memory-postgres`, key
-`config_overrides`) — so there's no need to use both; either is fine. If mem0 rejects an add
-with an error naming a DIFFERENT model than anything you configured (confirmed live: entering
-provider-routed model strings like `@your-provider-alias/text-embedding-005` for the embedder,
-yet the error names an unrelated chat model), don't assume it's this project's bug — test the
-exact model string directly against your gateway first, bypassing mem0 entirely:
+**Prefer `MEM0_DEFAULT_LLM_MODEL`/`MEM0_DEFAULT_EMBEDDER_MODEL`/`MEM0_EMBEDDING_DIMS`
+(install.sh) over the dashboard's own Configure page.** Both ultimately feed the same
+underlying config, but the dashboard's path persists through a DB-stored override
+(`SELECT key, value FROM settings;` inside `memory-postgres`'s `postgres` database, key
+`config_overrides`) that proved unreliable in practice — confirmed live, it did not
+consistently take effect even when correctly stored. The install.sh/env-var path has been
+solid throughout. If you've ever used the dashboard's Configure page, clear any leftover
+override once you've set things via install.sh instead:
+`DELETE FROM settings WHERE key = 'config_overrides';` (run inside `memory-postgres`'s
+`postgres` database, then `docker compose up -d --force-recreate memory-api`).
+
+**Dimension mismatches** (`psycopg.errors.DataException: expected 1536 dimensions, not N`):
+`MEM0_EMBEDDING_DIMS` must match your embedder's *actual* output size (1536 for OpenAI
+text-embedding-3-small, 768 for Vertex AI's text-embedding-005, etc.) — mem0 otherwise
+silently assumes OpenAI's 1536 regardless of the real embedder. This only affects a *new*
+table — if one already exists with the wrong dimension, changing the setting alone does
+nothing; you must also drop it:
+`docker exec memory-postgres psql -U postgres -d postgres -c "DROP TABLE IF EXISTS memories;"`
+(confirmed live: this table lives in the `postgres` database, **not** `mem0_app` — `mem0_app`
+only holds the app's own relational metadata — a mismatch that's easy to miss while
+troubleshooting), then recreate `memory-api`.
+
+**If mem0 rejects an add with an error naming a DIFFERENT model than anything you
+configured** (confirmed live: entering provider-routed model strings like
+`@your-provider-alias/text-embedding-005` for the embedder, yet the error names an unrelated
+chat model), don't assume it's this project's bug — test the exact model string directly
+against your gateway first, bypassing mem0 entirely:
 ```bash
 curl -X POST http://<your-gateway-host>/v1/embeddings \
   -H "Content-Type: application/json" -H "Authorization: Bearer <key>" \
@@ -778,7 +797,10 @@ If that curl alone reproduces the same unexpected-model error, the problem is in
 Gateway's own provider/virtual-key configuration, not in mem0 or this codebase — confirmed live:
 the API key itself was bound to a specific model on the gateway side, silently substituting it
 for whatever model the request actually asked for. Fix it in your gateway's own admin console
-(a separate key/virtual-key per model, or one not pinned to any single model).
+(a separate key/virtual-key per model, or one not pinned to any single model) — each AI
+Gateway key mem0 uses (`~/mcp-secrets/memory.env`'s `OPENAI_API_KEY`, separate from the main
+chat key) only gets prompted for **once** by `install.sh`, on the very first run, and is never
+re-prompted afterward; edit that file by hand if it needs to change later.
 
 **Postgres (demo database)** — synthetic sensitive data (fake customers with SSNs/card numbers,
 employees with salaries/bank accounts) for guardrail demos. Safety comes from **database
