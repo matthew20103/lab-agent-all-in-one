@@ -410,25 +410,23 @@ at install time (e.g. to avoid a naming clash, or match an existing convention):
 | `MEMAPI_SUBDOMAIN` | `memapi` | `memory-api` | the dashboard's browser JS calls this directly by hostname |
 | `RAGUI_SUBDOMAIN` | `ragui` | `chroma-ui` | Caddy `basicauth`, separate credential from the admin dashboard's |
 
-Caddy uses its standard automatic HTTPS (HTTP-01) by default — each hostname's DNS A record
-must point at the server's **public** IP with ports 80/443 reachable from the internet. For a
-private-network test box (no public IP yet), `install.sh` asks "is this server publicly
-reachable?" and, if not, sets `CADDY_LOCAL_CERTS=local_certs`, switching every site to Caddy's
-own internal CA — works immediately with no public reachability, but browsers show a
-"not trusted" warning and `curl` needs `-k`/`--insecure`. Re-run `install.sh` and answer "yes"
-once the server is actually public-reachable to switch back to real Let's Encrypt certs.
+There's no self-signed/internal-CA fallback in this project — every server ends up with a real,
+publicly-trusted certificate, one of two ways:
 
-When going the real-cert route, `install.sh` also checks each hostname's DNS against this
-server's actual public IP (via a public IP-echo lookup, since a cloud instance's own LAN-facing
-IP is often *not* its public one) right before starting the stack, and polls each hostname over
-HTTPS for up to ~2 minutes after `edge-proxy` starts to confirm Caddy actually got a real
-certificate — reporting `OK`/`FAILED` per hostname instead of leaving you to guess whether ACME
-silently succeeded or is stuck retrying. A `FAILED` almost always means DNS hasn't propagated
-yet or ports 80/443 aren't reachable from the public internet (check your cloud provider's
-firewall/security group, not just `ufw` — Docker-published ports plus a permissive `ufw` won't
-help if the cloud network layer itself is blocking the port).
+**1. Automatic (default)** — Caddy's standard HTTP-01 flow. Each hostname's DNS A record must
+point at the server's **public** IP with ports 80/443 reachable from the internet. `install.sh`
+checks each hostname's DNS against this server's actual public IP (via a public IP-echo lookup,
+since a cloud instance's own LAN-facing IP is often *not* its public one) right before starting
+the stack, and polls each hostname over HTTPS for up to ~2 minutes after `edge-proxy` starts to
+confirm Caddy actually got a real certificate — reporting `OK`/`FAILED` per hostname instead of
+leaving you to guess whether ACME silently succeeded or is stuck retrying. A `FAILED` here is
+*expected*, not a bug, for a server with no inbound connectivity at all (see option 2) —
+otherwise it usually means DNS hasn't propagated yet, or ports 80/443 aren't reachable from the
+public internet (check your cloud provider's firewall/security group, not just `ufw` —
+Docker-published ports plus a permissive `ufw` won't help if the cloud network layer itself is
+blocking the port).
 
-**A third option, for a server with no inbound 80/443 at all** (so HTTP-01 above can never
+**2. Manual DNS-01, for a server with no inbound 80/443 at all** (so HTTP-01 above can never
 succeed, no matter how correct your DNS is) **but full control over this domain's DNS records**:
 run `./obtain-manual-tls-cert.sh` (repo root) after `install.sh`. It walks you through Let's
 Encrypt's **DNS-01** challenge — you publish a `_acme-challenge.{BASE_DOMAIN}` TXT record
@@ -450,15 +448,6 @@ you don't have a real domain for the lab box, use
 **`<server-ip-with-dashes>.nip.io`** (e.g. `203-0-113-42.nip.io`) as `BASE_DOMAIN` — a free
 wildcard DNS service that resolves any such hostname straight to the embedded IP, with nothing
 to configure.
-
-**If running with `CADDY_LOCAL_CERTS=local_certs`**, also run `./trust-caddy-local-ca.sh` (repo
-root) once after the stack is up. Without it, `chat_ui`'s server-side login call to the backend
-fails TLS verification (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) — again surfaced by NextAuth as a
-generic "Sign in failed", not an obvious TLS error. The script extracts Caddy's internal CA
-root cert and makes `chat_ui`'s Node process trust it; safe to re-run any time (e.g. after
-`edge-proxy`'s data volume is recreated and a new internal CA is generated). Not needed, and
-should not be applied, once the server has a real public IP and uses genuine Let's Encrypt
-certs.
 
 ### 1.4 Firewall
 

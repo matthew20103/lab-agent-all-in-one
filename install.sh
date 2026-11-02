@@ -227,36 +227,16 @@ read -rp "Email for Let's Encrypt notifications [${default_email}]: " ACME_EMAIL
 ACME_EMAIL="${ACME_EMAIL:-$default_email}"
 [ -n "$ACME_EMAIL" ] || { echo "ERROR: an email is required for Let's Encrypt." >&2; exit 1; }
 
-# Public Let's Encrypt/ZeroSSL validation can only ever reach a server at a real public IP.
-# A private-network test box (e.g. 192.168.x.x/10.x.x.x) will always fail with a DNS-looking
-# error ("no valid A records found") that's actually a reachability problem, not a DNS one —
-# and repeated attempts can trip Let's Encrypt's rate limiter for up to an hour. So default to
-# the SAFE answer ("n") whenever this hasn't been explicitly answered before; only default to
-# "y" if a previous run's answer is actually on record (grep for the key, not just its value —
-# an explicit prior "public" answer is stored as an empty value, indistinguishable from
-# "never asked" if we only looked at the resolved value).
-if grep -qE "^CADDY_LOCAL_CERTS=" "$ROOT/edge-proxy/.env" 2>/dev/null; then
-  if [ "$(existing CADDY_LOCAL_CERTS "$ROOT/edge-proxy/.env")" = "local_certs" ]; then
-    default_public_reachable="n"
-  else
-    default_public_reachable="y"
-  fi
-else
-  default_public_reachable="n"
-fi
-read -rp "Is this server reachable from the public internet on ports 80/443 (a real public IP, not a private 192.168.x.x/10.x.x.x one)? [${default_public_reachable}]: " public_reachable_input
-public_reachable_input="${public_reachable_input:-$default_public_reachable}"
-if [[ "$public_reachable_input" =~ ^[Yy] ]]; then
-  CADDY_LOCAL_CERTS=""
-else
-  CADDY_LOCAL_CERTS="local_certs"
-  echo "   Using Caddy's internal CA (self-signed-style certs) instead of public Let's Encrypt —"
-  echo "   browsers will warn \"not trusted\" and curl needs -k/--insecure until this server is"
-  echo "   publicly reachable and you re-run this script answering \"y\" here."
-  echo "   No inbound 80/443 at all, but you DO control this domain's DNS? Skip self-signed"
-  echo "   entirely — after this script finishes, run ./obtain-manual-tls-cert.sh instead for a"
-  echo "   real trusted wildcard cert via a manual DNS-01 challenge (see LAB_GUIDE.md Appendix 1.3)."
-fi
+# Caddy always attempts its standard automatic HTTPS (HTTP-01) below — no self-signed fallback.
+# That needs a real public IP with ports 80/443 reachable from the internet; if this server
+# doesn't have that, automatic issuance will just keep failing/retrying harmlessly in the
+# background until you run ./obtain-manual-tls-cert.sh afterward (outbound-only servers with
+# DNS control get a real trusted wildcard cert via a manual DNS-01 challenge instead — see
+# LAB_GUIDE.md Appendix 1.3). The DNS/TLS checks after this script brings the stack up will
+# tell you which case you're in.
+echo "Public Let's Encrypt (HTTP-01) needs a real public IP + inbound 80/443 reachable from the"
+echo "internet. No public IP yet? Let this finish, then run ./obtain-manual-tls-cert.sh instead —"
+echo "no need to answer anything differently here."
 
 default_dash_user="$(existing DASHBOARD_USER "$ROOT/edge-proxy/.env")"
 default_dash_user="${default_dash_user:-admin}"
@@ -305,7 +285,7 @@ AGENT_ENV="$ROOT/my-ai-agent/agent-backend/.env"
 CHAT_ENV="$ROOT/my-ai-agent/client-chat-ui/.env"
 
 default_portkey_gw="$(existing PORTKEY_GATEWAY_URL "$AGENT_ENV")"
-read -rp "Portkey gateway URL [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
+read -rp "Portkey gateway URL, e.g. http://<gateway-host>:8787/v1 [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
 PORTKEY_GATEWAY_URL="${PORTKEY_GATEWAY_URL:-$default_portkey_gw}"
 
 existing_portkey_key="$(unescape_dollars "$(existing PORTKEY_API_KEY "$AGENT_ENV")")"
@@ -313,17 +293,20 @@ read_masked "Portkey API key (leave blank to keep the existing one): "
 PORTKEY_API_KEY="${MASKED_REPLY:-$existing_portkey_key}"
 
 default_portkey_mcp_gw="$(existing PORTKEY_MCP_GATEWAY_URL "$AGENT_ENV")"
-read -rp "Portkey MCP gateway URL [${default_portkey_mcp_gw}]: " PORTKEY_MCP_GATEWAY_URL
+read -rp "Portkey MCP gateway URL, e.g. http://<gateway-host>:8788 [${default_portkey_mcp_gw}]: " PORTKEY_MCP_GATEWAY_URL
 PORTKEY_MCP_GATEWAY_URL="${PORTKEY_MCP_GATEWAY_URL:-$default_portkey_mcp_gw}"
 
 default_portkey_slugs="$(existing PORTKEY_MCP_SERVER_SLUGS "$AGENT_ENV")"
 read -rp "Portkey MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
 
 # mem0's own OpenAI-compatible REST client needs the gateway's plain LLM API endpoint — a
-# different host:port/path than PORTKEY_GATEWAY_URL above on some gateway setups, so it's its
-# own prompt rather than reused.
+# different host:port/path than PORTKEY_GATEWAY_URL above on SOME gateway setups, so it's kept
+# as its own prompt rather than silently reused — but on the common setup where it's the exact
+# same URL, default to what was just typed above so Enter alone repeats it instead of needing
+# the whole URL retyped.
 default_mem0_gw="$(existing MEM0_GATEWAY_URL "$ROOT/my-mcp-tools/mcp-hub/.env")"
-read -rp "AI Gateway's LLM API URL for mem0 memory, e.g. http://<gateway-host>/v1 [${default_mem0_gw}]: " MEM0_GATEWAY_URL
+default_mem0_gw="${default_mem0_gw:-$PORTKEY_GATEWAY_URL}"
+read -rp "AI Gateway's LLM API URL for mem0 memory (usually same as Portkey gateway URL above) [${default_mem0_gw}]: " MEM0_GATEWAY_URL
 MEM0_GATEWAY_URL="${MEM0_GATEWAY_URL:-$default_mem0_gw}"
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
@@ -422,7 +405,6 @@ upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_USER "$DASHBOARD_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$(escape_dollars "$DASHBOARD_PASSWORD_HASH")"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_USER "$MCP_UI_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_PASSWORD_HASH "$(escape_dollars "$MCP_UI_PASSWORD_HASH")"
-upsert_env_var "$ROOT/edge-proxy/.env" CADDY_LOCAL_CERTS "$CADDY_LOCAL_CERTS"
 
 # edge-proxy/docker-compose.yml bind-mounts both of these — they must exist before `docker
 # compose up` runs, even for servers that never run obtain-manual-tls-cert.sh. Never clobber
@@ -606,26 +588,28 @@ ALL_SUBDOMAINS=("$CHAT_SUBDOMAIN" "$AGENT_SUBDOMAIN" "$DASHBOARD_SUBDOMAIN" "$ME
 # this server's PUBLIC IP — not the private/LAN IP install.sh itself runs on if this box sits
 # behind NAT (a cloud instance's own `ip route get` src IP is very often its private IP, not
 # its public/elastic one). This is best-effort and non-blocking: DNS propagation lag is normal,
-# so a mismatch here is a heads-up, not a hard failure — `getent` needs no extra package,
-# unlike `dig`, which isn't installed by default on a minimal Ubuntu image.
-if [ -z "$CADDY_LOCAL_CERTS" ]; then
-  echo
-  echo "==> Checking DNS before requesting real certificates"
-  PUBLIC_IP="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
-  if [ -n "$PUBLIC_IP" ]; then
-    echo "   this server's public IP looks like: $PUBLIC_IP"
-    for sub in "${ALL_SUBDOMAINS[@]}"; do
-      fqdn="${sub}.${BASE_DOMAIN}"
-      resolved="$(getent ahostsv4 "$fqdn" 2>/dev/null | awk '{print $1; exit}')"
-      if [ "$resolved" != "$PUBLIC_IP" ]; then
-        echo "   WARNING: ${fqdn} resolves to '${resolved:-nothing}', not ${PUBLIC_IP} yet." >&2
-        echo "            Point its DNS A record here before/while Caddy requests a cert — it" >&2
-        echo "            will keep retrying ACME in the background either way." >&2
-      fi
-    done
-  else
-    echo "   couldn't determine this server's public IP (offline, or api.ipify.org unreachable) — skipping"
-  fi
+# and a server with no inbound connectivity at all is an expected, supported case (see
+# obtain-manual-tls-cert.sh below) — so a mismatch here is a heads-up, not a hard failure.
+# `getent` needs no extra package, unlike `dig`, which isn't installed by default on a minimal
+# Ubuntu image.
+echo
+echo "==> Checking DNS before requesting real certificates"
+PUBLIC_IP="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+if [ -n "$PUBLIC_IP" ]; then
+  echo "   this server's public IP looks like: $PUBLIC_IP"
+  for sub in "${ALL_SUBDOMAINS[@]}"; do
+    fqdn="${sub}.${BASE_DOMAIN}"
+    resolved="$(getent ahostsv4 "$fqdn" 2>/dev/null | awk '{print $1; exit}')"
+    if [ "$resolved" != "$PUBLIC_IP" ]; then
+      echo "   WARNING: ${fqdn} resolves to '${resolved:-nothing}', not ${PUBLIC_IP} yet." >&2
+      echo "            Point its DNS A record here before/while Caddy requests a cert — it" >&2
+      echo "            will keep retrying ACME in the background either way. If this server" >&2
+      echo "            has no inbound 80/443 at all, ignore this and run" >&2
+      echo "            ./obtain-manual-tls-cert.sh once the stack is up instead." >&2
+    fi
+  done
+else
+  echo "   couldn't determine this server's public IP (offline, or api.ipify.org unreachable) — skipping"
 fi
 
 # ---------------------------------------------------------------------------
@@ -648,42 +632,38 @@ echo "==> Starting edge-proxy"
 ( cd "$ROOT/edge-proxy" && docker compose up -d --build )
 
 # Confirm Caddy actually obtained real certs instead of leaving the user to guess — ACME's
-# HTTP-01 round trip isn't instant, so poll for a couple of minutes before calling it failed.
-# Skipped entirely in local_certs mode: self-signed certs don't involve ACME at all, and curl
-# would need -k anyway, which is already covered by the message below.
-if [ -z "$CADDY_LOCAL_CERTS" ]; then
-  echo
-  echo "==> Verifying TLS certificates (may take up to ~2 minutes on first issuance)"
-  for sub in "${ALL_SUBDOMAINS[@]}"; do
-    fqdn="${sub}.${BASE_DOMAIN}"
-    ok=0
-    for _ in $(seq 1 24); do
-      if curl -fsS --max-time 5 "https://${fqdn}" -o /dev/null 2>/dev/null; then ok=1; break; fi
-      sleep 5
-    done
-    if [ "$ok" -eq 1 ]; then
-      echo "   OK: https://${fqdn}"
-    else
-      echo "   FAILED: https://${fqdn} — check: does its DNS A record point here yet? are ports" >&2
-      echo "            80/443 reachable from the public internet (cloud provider firewall/" >&2
-      echo "            security group, not just ufw)? Full error:" >&2
-      echo "            (cd edge-proxy && docker compose logs edge-proxy --tail 50)" >&2
-    fi
+# HTTP-01 round trip isn't instant, so poll for a couple of minutes before calling it failed. A
+# FAILED here is expected (not a bug) for a server with no inbound 80/443 at all — that's what
+# obtain-manual-tls-cert.sh is for.
+echo
+echo "==> Verifying TLS certificates (may take up to ~2 minutes on first issuance)"
+for sub in "${ALL_SUBDOMAINS[@]}"; do
+  fqdn="${sub}.${BASE_DOMAIN}"
+  ok=0
+  for _ in $(seq 1 24); do
+    if curl -fsS --max-time 5 "https://${fqdn}" -o /dev/null 2>/dev/null; then ok=1; break; fi
+    sleep 5
   done
-fi
+  if [ "$ok" -eq 1 ]; then
+    echo "   OK: https://${fqdn}"
+  else
+    echo "   FAILED: https://${fqdn} — if this server has no inbound 80/443 at all, that's" >&2
+    echo "            expected: run ./obtain-manual-tls-cert.sh once this script finishes." >&2
+    echo "            Otherwise check: does its DNS A record point here yet? are ports 80/443" >&2
+    echo "            reachable from the public internet (cloud provider firewall/security" >&2
+    echo "            group, not just ufw)? Full error:" >&2
+    echo "            (cd edge-proxy && docker compose logs edge-proxy --tail 50)" >&2
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # 7. Summary
 # ---------------------------------------------------------------------------
 echo
 echo "== Done =="
-if [ -n "$CADDY_LOCAL_CERTS" ]; then
-  echo "TLS: using Caddy's internal CA (self-signed-style certs) — this server isn't marked"
-  echo "public-reachable. Browsers will warn \"not trusted\"; curl needs -k/--insecure. Re-run"
-  echo "this script and answer \"y\" to the public-reachability prompt once that's no longer true."
-else
-  echo "Point these DNS A records at this server's public IP (Caddy can't issue certs until they resolve):"
-fi
+echo "Point these DNS A records at this server's public IP (Caddy can't issue real certs until"
+echo "they resolve — or skip that and run ./obtain-manual-tls-cert.sh if this server has no"
+echo "inbound 80/443 at all, see LAB_GUIDE.md Appendix 1.3):"
 for sub in "${ALL_SUBDOMAINS[@]}"; do
   echo "   ${sub}.${BASE_DOMAIN}"
 done

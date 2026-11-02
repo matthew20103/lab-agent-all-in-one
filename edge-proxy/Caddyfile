@@ -1,31 +1,21 @@
 {
     email {$ACME_EMAIL}
-    {$CADDY_LOCAL_CERTS}
 }
 
-# Automatic HTTPS: by default (CADDY_LOCAL_CERTS unset, the line above resolves to blank and
-# is ignored), Caddy issues and renews real Let's Encrypt certs on its own for each hostname
-# below, as long as its DNS A record points at this server's PUBLIC IP and ports 80/443 are
-# reachable from the public internet — no DNS provider credentials needed, unlike the
-# acme-dns setup this replaces.
+# Automatic HTTPS: Caddy issues and renews real Let's Encrypt certs on its own (HTTP-01) for
+# each hostname below, as long as its DNS A record points at this server's PUBLIC IP and ports
+# 80/443 are reachable from the public internet.
 #
-# If this server only has a private/internal IP (common for a test box), public ACME
-# validation can never reach it — Let's Encrypt reports "no valid A records found" even
-# though DNS resolves fine internally. install.sh sets CADDY_LOCAL_CERTS=local_certs for that
-# case: the global `local_certs` option switches every site block below to Caddy's own
-# internal CA at once, no per-site changes needed. Works immediately with no public
-# reachability, but browsers will show a "not trusted" warning (expected for a
-# self-signed-style cert) unless you import Caddy's root CA, and `curl` needs `-k`/`--insecure`.
-# Switch back (re-run install.sh, answer the public-reachability prompt "yes") once this is
-# actually reachable from the public internet.
+# For a server with outbound-only connectivity (no inbound 80/443 at all, so HTTP-01 can never
+# work regardless of DNS) but full DNS control: run ./obtain-manual-tls-cert.sh (repo root) to
+# get a real trusted wildcard cert via a manual DNS-01 challenge instead. Every site block below
+# starts with `import tls-override.conf` — that file is empty by default (so this changes
+# nothing until that script is run) and, once populated, injects a `tls <cert> <key>` directive
+# that makes Caddy use that static real cert instead of attempting automatic HTTPS for that
+# site at all. See LAB_GUIDE.md Appendix 1.3.
 #
-# A third option, for a server with outbound-only connectivity (no inbound 80/443 at all, so
-# HTTP-01 above can never work regardless of DNS) but full DNS control: run
-# ./obtain-manual-tls-cert.sh (repo root) to get a real trusted wildcard cert via a manual
-# DNS-01 challenge. Every site block below starts with `import tls-override.conf` — that file
-# is empty by default (so this changes nothing until that script is run) and, once populated,
-# injects a `tls <cert> <key>` directive that makes Caddy use that static real cert instead of
-# either automatic method above. See LAB_GUIDE.md Appendix 1.3.
+# There is no self-signed/internal-CA fallback — every server gets a real, publicly-trusted
+# certificate one way or the other.
 
 {$CHAT_SUBDOMAIN:chat}.{$BASE_DOMAIN} {
     import tls-override.conf

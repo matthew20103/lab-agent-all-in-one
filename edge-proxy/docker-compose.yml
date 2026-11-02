@@ -13,12 +13,17 @@ services:
     network_mode: host
     environment:
       - BASE_DOMAIN=${BASE_DOMAIN}
+      - CHAT_SUBDOMAIN=${CHAT_SUBDOMAIN}
+      - AGENT_SUBDOMAIN=${AGENT_SUBDOMAIN}
+      - DASHBOARD_SUBDOMAIN=${DASHBOARD_SUBDOMAIN}
+      - MEMORY_SUBDOMAIN=${MEMORY_SUBDOMAIN}
+      - MEMAPI_SUBDOMAIN=${MEMAPI_SUBDOMAIN}
+      - RAGUI_SUBDOMAIN=${RAGUI_SUBDOMAIN}
       - ACME_EMAIL=${ACME_EMAIL}
       - DASHBOARD_USER=${DASHBOARD_USER}
       - DASHBOARD_PASSWORD_HASH=${DASHBOARD_PASSWORD_HASH}
       - MCP_UI_USER=${MCP_UI_USER}
       - MCP_UI_PASSWORD_HASH=${MCP_UI_PASSWORD_HASH}
-      - CADDY_LOCAL_CERTS=${CADDY_LOCAL_CERTS}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./tls-override.conf:/etc/caddy/tls-override.conf:ro

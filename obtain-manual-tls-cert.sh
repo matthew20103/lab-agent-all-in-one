@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Gets a real, publicly-trusted wildcard TLS cert for *.{BASE_DOMAIN} via a MANUAL Let's
-# Encrypt DNS-01 challenge, and wires edge-proxy (Caddy) to use it instead of either of
-# install.sh's two automatic options (public Let's Encrypt HTTP-01, or CADDY_LOCAL_CERTS
-# self-signed). For servers with outbound-only connectivity — no inbound 80/443 reachable from
-# the public internet at all, so HTTP-01 can never succeed regardless of DNS — but full control
-# over this domain's DNS records (can publish an arbitrary TXT record on request).
+# Encrypt DNS-01 challenge, and wires edge-proxy (Caddy) to use it instead of install.sh's
+# default automatic Let's Encrypt (HTTP-01). For servers with outbound-only connectivity — no
+# inbound 80/443 reachable from the public internet at all, so HTTP-01 can never succeed
+# regardless of DNS — but full control over this domain's DNS records (can publish an
+# arbitrary TXT record on request). There's no self-signed fallback in this project — every
+# server ends up with a real, publicly-trusted cert one way or the other.
 #
 # DNS-01 is the only ACME challenge type that can issue a WILDCARD cert, which is exactly what
 # we want here: one manual TXT-record challenge covers *.{BASE_DOMAIN} — all six subdomains
 # (chat/agent/dashboard/memory/memapi/ragui) — instead of needing six separate ones. See
-# LAB_GUIDE.md Appendix 1.3 for the full picture of all three TLS options this project supports.
+# LAB_GUIDE.md Appendix 1.3 for the full picture of both TLS options this project supports.
 #
 # Run as the same normal sudo-capable user install.sh was run as, not root. Safe to re-run: if
 # a non-expiring-soon cert already exists, it just re-wires Caddy to it without bothering
@@ -94,8 +95,9 @@ echo "Real trusted certificate in use for all *.${BASE_DOMAIN} hostnames, valid 
 echo "Let's Encrypt certs last ~90 days and this manual DNS-01 flow has no auto-renewal hook —"
 echo "re-run this script before then (or any time after that date, if you miss it)."
 echo
-echo "If this server was previously using CADDY_LOCAL_CERTS=local_certs, the"
-echo "trust-caddy-local-ca.sh workaround for client-chat-ui is no longer needed (a real public"
-echo "CA is already trusted everywhere) — safe to leave in place, or remove"
-echo "my-ai-agent/client-chat-ui/docker-compose.local-certs.yml and re-run a plain"
-echo "'docker compose up -d' there if you'd rather clean it up."
+if [ -f "$ROOT/my-ai-agent/client-chat-ui/docker-compose.local-certs.yml" ]; then
+  echo "This server has a leftover docker-compose.local-certs.yml from a previous self-signed"
+  echo "setup — no longer needed now that a real public CA is trusted everywhere. Clean it up:"
+  echo "  rm my-ai-agent/client-chat-ui/docker-compose.local-certs.yml"
+  echo "  (cd my-ai-agent/client-chat-ui && docker compose up -d)"
+fi
