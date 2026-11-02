@@ -1,6 +1,6 @@
 # Progress Report — agent-all-in-one Lab
 
-_Last updated: 2026-11-02_
+_Last updated: 2026-11-03_
 
 ## 1. What's been done
 
@@ -73,7 +73,23 @@ _Last updated: 2026-11-02_
   check to `install.sh` rejecting `.local`/`.test`/`.example`/`.invalid`/`.localhost`/
   `.internal` and suggesting `nip.io` as the fix. Committed and pushed to both remotes.
 
-## 2. What's still needed / open
+## 2. Future considerations (not started)
+
+- **LangGraph for `agent-backend`'s tool-calling loop?** Asked about, not pursued yet.
+  Recommendation: a reasonable fit *if* the goal is genuinely multi-step agentic behavior
+  (planning loops, branching/conditional tool paths, human-in-the-loop pauses, resumable state
+  via LangGraph's built-in checkpointing) — lines up with what
+  `agent-backend/docs/AGENTIC_AI_ROADMAP.md` already sketches. Main tradeoff: it's a real
+  rewrite, not an add-on — the current architecture (four chat endpoints each hand-rolling the
+  same intent→tool-loop→response pipeline, Redis-based live config, custom Portkey
+  routing/trace extraction) would need real restructuring to fit LangGraph's graph/state model,
+  and the added abstraction layer could work against this being a *teaching* lab, where the
+  current explicit, readable pipeline is arguably a feature. A concrete side-by-side sketch (the
+  `while True` tool loop expressed as a LangGraph cycle, session load/save vs. LangGraph's
+  checkpointer) was shown in conversation but not applied to any file — worth revisiting that
+  sketch if this gets picked back up later.
+
+## 3. What's still needed / open
 
 - **Confirm the in-flight student issues are actually resolved.** The `admin:P@ssw0rd`
   `CredentialsSignin` student was asked to force-recreate the `agent` container and retry;
