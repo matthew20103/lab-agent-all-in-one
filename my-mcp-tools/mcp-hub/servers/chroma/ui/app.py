@@ -73,7 +73,14 @@ async def create_collection(name: Annotated[str, Form()]):
     name = name.strip()
     if not name:
         raise HTTPException(400, "Collection name is required.")
-    client.get_or_create_collection(name)
+    try:
+        client.get_or_create_collection(name)
+    except Exception as exc:
+        # Without this, any failure here (an invalid name per Chroma's own naming rules, the
+        # chroma server being unreachable, the default embedding model failing to load, etc.)
+        # surfaced as a bare, unhelpful "Internal Server Error" with the real cause only visible
+        # in `docker logs chroma-ui` — confirmed live. Show it directly instead.
+        raise HTTPException(500, f"Couldn't create collection '{name}': {exc}")
     return RedirectResponse(f"/collections/{name}", status_code=303)
 
 
@@ -129,11 +136,14 @@ async def upload(name: str, file: UploadFile = File(...)):
     if not chunks:
         raise HTTPException(400, f"No text extracted from {filename}.")
 
-    coll.add(
-        ids=[str(uuid.uuid4()) for _ in chunks],
-        documents=chunks,
-        metadatas=[{"source": filename, "chunk_index": i} for i in range(len(chunks))],
-    )
+    try:
+        coll.add(
+            ids=[str(uuid.uuid4()) for _ in chunks],
+            documents=chunks,
+            metadatas=[{"source": filename, "chunk_index": i} for i in range(len(chunks))],
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"Couldn't add {filename} to '{name}': {exc}")
     return RedirectResponse(f"/collections/{name}", status_code=303)
 
 
@@ -151,5 +161,8 @@ async def delete_document(name: str, doc_id: str):
 async def delete_collection(name: str, confirm_name: Annotated[str, Form()]):
     if confirm_name.strip() != name:
         raise HTTPException(400, "Typed name doesn't match — collection not deleted.")
-    client.delete_collection(name)
+    try:
+        client.delete_collection(name)
+    except Exception as exc:
+        raise HTTPException(500, f"Couldn't delete collection '{name}': {exc}")
     return RedirectResponse("/", status_code=303)
