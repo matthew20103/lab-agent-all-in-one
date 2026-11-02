@@ -48,6 +48,13 @@ services:
     environment:
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
+    volumes:
+      # Chroma's default local embedding function (all-MiniLM-L6-v2, ~80MB) downloads to
+      # /root/.cache/chroma on first use — confirmed live to take several minutes on a slow
+      # egress path, and with no volume here it silently re-downloads from scratch on every
+      # container recreate. Shared with chroma-ui below so whichever downloads it first saves
+      # the other the wait too.
+      - chroma_onnx_cache:/root/.cache/chroma
     depends_on:
       chroma: {condition: service_healthy}
     networks: [default, chroma]
@@ -63,6 +70,8 @@ services:
     environment:
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
+    volumes:
+      - chroma_onnx_cache:/root/.cache/chroma
     depends_on:
       chroma: {condition: service_healthy}
     ports:
@@ -77,3 +86,4 @@ networks:
 
 volumes:
   chroma_data: {}
+  chroma_onnx_cache: {}
