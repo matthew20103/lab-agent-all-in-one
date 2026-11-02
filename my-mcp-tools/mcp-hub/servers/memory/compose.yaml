@@ -3,17 +3,29 @@
 # mem0 API:  https://${MEMAPI_SUBDOMAIN:-memapi}.${BASE_DOMAIN}   (both via edge-proxy)
 # MCP: http://<UBUNTU_IP>:8080/memory/mcp (via mcp-proxy)
 # All secrets come from ~/mcp-secrets/memory.env on the server (see LAB_GUIDE.md Appendix 3.8).
-# BASE_DOMAIN, MEMORY_SUBDOMAIN, MEMAPI_SUBDOMAIN, MEM0_GATEWAY_URL, MEM0_DEFAULT_LLM_MODEL and
-# MEM0_DEFAULT_EMBEDDER_MODEL come from mcp-hub/.env (written by install.sh), not
-# ~/mcp-secrets/ (none of these are secrets). Neither model var has a sensible universal
-# default — each must be a model string YOUR OWN AI Gateway actually recognizes (plain model
-# name, or @<your-provider-alias>/<model> if your gateway uses provider routing). A value that
-# only existed on a different gateway instance gets rejected outright ("Provider rejected the
-# request as malformed"), confirmed live — don't hardcode one here again. The two are SEPARATE
-# on purpose: MEM0_DEFAULT_LLM_MODEL must be a chat/generative model (fact extraction),
-# MEM0_DEFAULT_EMBEDDER_MODEL must be embedding-capable — mem0 reuses the LLM model for
-# embedding calls too if this one is left unset, which fails outright ("is not supported in
-# the embedContent API") against a chat-only model, also confirmed live.
+# BASE_DOMAIN, MEMORY_SUBDOMAIN, MEMAPI_SUBDOMAIN, MEM0_GATEWAY_URL, MEM0_DEFAULT_LLM_MODEL,
+# MEM0_DEFAULT_EMBEDDER_MODEL and MEM0_EMBEDDING_DIMS come from mcp-hub/.env (written by
+# install.sh), not ~/mcp-secrets/ (none of these are secrets). Neither model var has a sensible
+# universal default — each must be a model string YOUR OWN AI Gateway actually recognizes
+# (plain model name, or @<your-provider-alias>/<model> if your gateway uses provider routing).
+# A value that only existed on a different gateway instance gets rejected outright ("Provider
+# rejected the request as malformed"), confirmed live — don't hardcode one here again. The two
+# are SEPARATE on purpose: MEM0_DEFAULT_LLM_MODEL must be a chat/generative model (fact
+# extraction), MEM0_DEFAULT_EMBEDDER_MODEL must be embedding-capable — mem0 reuses the LLM
+# model for embedding calls too if this one is left unset, which fails outright ("is not
+# supported in the embedContent API") against a chat-only model, also confirmed live.
+#
+# MEM0_EMBEDDING_DIMS must match your embedder's ACTUAL output dimension (1536 for OpenAI
+# text-embedding-3-small, 768 for Vertex AI's text-embedding-005, etc.) — mem0's own
+# DEFAULT_CONFIG never sets this for the pgvector store, so PGVectorConfig's own hardcoded
+# default (1536, OpenAI's standard) wins regardless of what embedding model is actually
+# configured, and Postgres rejects any insert whose vector size doesn't match the column it
+# created the table with ("expected 1536 dimensions, not 768"), confirmed live. Patched into
+# main.py at build time below (DB-override persistence proved unreliable for this — the model
+# env vars above are solid, so this is wired the same way instead). If you ever change
+# MEM0_EMBEDDING_DIMS on a server that already has data, you must also drop the `memories`
+# table (or the whole memory_pgdata volume, in a lab/test context) so it gets recreated with
+# the new dimension — changing the setting alone does not alter an existing table's column type.
 
 services:
   memory-mcp:
@@ -38,6 +50,10 @@ services:
         COPY requirements.txt .
         RUN pip install --no-cache-dir -r requirements.txt mem0ai==2.2.1
         COPY . .
+        # See the header comment above (MEM0_EMBEDDING_DIMS) for why this patch exists: mem0's
+        # own DEFAULT_CONFIG never sets embedding_model_dims for pgvector, so it silently
+        # assumes OpenAI's 1536 regardless of the actual configured embedder.
+        RUN sed -i 's/"collection_name": POSTGRES_COLLECTION_NAME,/"collection_name": POSTGRES_COLLECTION_NAME, "embedding_model_dims": int(os.environ.get("MEM0_EMBEDDING_DIMS", "1536")),/' main.py
         ENV PYTHONUNBUFFERED=1
         CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
     image: mcp-hub/memory-api:2.2.1
@@ -50,6 +66,7 @@ services:
       OPENAI_BASE_URL: ${MEM0_GATEWAY_URL}
       MEM0_DEFAULT_LLM_MODEL: ${MEM0_DEFAULT_LLM_MODEL}
       MEM0_DEFAULT_EMBEDDER_MODEL: ${MEM0_DEFAULT_EMBEDDER_MODEL}
+      MEM0_EMBEDDING_DIMS: ${MEM0_EMBEDDING_DIMS:-1536}
       DASHBOARD_URL: https://${MEMORY_SUBDOMAIN:-memory}.${BASE_DOMAIN}
       AUTH_DISABLED: "false"
       MEM0_TELEMETRY: "false"
