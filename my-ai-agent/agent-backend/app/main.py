@@ -245,9 +245,16 @@ class ChatRequest(BaseModel):
     user_info: dict | None = None  # {"id", "email", "name"} from the CyberArk Identity (Idira) or Basic Auth session
     task_type: str | None = None  # "coding" | "writing", chosen by the user in the client UI
 
-jwks_client = PyJWKClient(CYBERARK_JWKS_URI)
+# Idira SSO is optional — Basic Auth (BASIC_AUTH_USERS) must keep working standalone with zero
+# CyberArk config. PyJWKClient's own constructor validates the URI eagerly, so building it
+# unconditionally here would crash the entire app at import time on any server that hasn't
+# configured Idira, not just reject Bearer-token requests. Build it lazily instead.
+jwks_client = PyJWKClient(CYBERARK_JWKS_URI) if CYBERARK_JWKS_URI else None
 
 def validate_jwt(token: str):
+    if jwks_client is None:
+        logger.error("Bearer token rejected: Idira SSO is not configured on this server (CYBERARK_JWKS_URI unset)")
+        raise ValueError("Idira SSO is not configured on this server")
     try:
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(token, signing_key.key, algorithms=["RS256"], audience=CYBERARK_AUDIENCE, issuer=CYBERARK_ISSUER)

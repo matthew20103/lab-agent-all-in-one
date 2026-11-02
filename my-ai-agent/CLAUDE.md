@@ -105,9 +105,14 @@ body.
 ### Auth (Idira, CyberArk Identity)
 
 JWTs validated against Idira's JWKS (RS256) using `CYBERARK_ISSUER`/`CYBERARK_AUDIENCE`/
-`CYBERARK_JWKS_URI` env vars (no hardcoded fallbacks — must be set in `.env`). Only the plain
-`Bearer` scheme is accepted (no DPoP). See `LAB_GUIDE.md` section H for the full auth flow,
-including the client-side NextAuth details.
+`CYBERARK_JWKS_URI` env vars (no hardcoded fallbacks). These are **optional** — Idira SSO is
+one of two independent auth methods, and Basic Auth must keep working with zero CyberArk
+config. `jwks_client` is built lazily (`None` when `CYBERARK_JWKS_URI` is unset) specifically so
+an empty value rejects `Bearer` requests with a clean 401 instead of crashing the app at import
+time (`PyJWKClient`'s own constructor validates its URI argument eagerly) — don't go back to
+constructing it unconditionally at module load. Only the plain `Bearer` scheme is accepted (no
+DPoP). See `LAB_GUIDE.md` section H for the full auth flow, including the client-side NextAuth
+details.
 
 ## Conventions & gotchas
 
