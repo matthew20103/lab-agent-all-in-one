@@ -413,6 +413,26 @@ own internal CA — works immediately with no public reachability, but browsers 
 "not trusted" warning and `curl` needs `-k`/`--insecure`. Re-run `install.sh` and answer "yes"
 once the server is actually public-reachable to switch back to real Let's Encrypt certs.
 
+`install.sh` rejects a `BASE_DOMAIN` ending in a reserved/special-use TLD
+(`.local`, `.test`, `.example`, `.invalid`, `.localhost`, `.internal`) at prompt time — these
+are guaranteed to never resolve via real DNS (`.local` needs mDNS, which Docker containers
+can't do; the rest are IANA-reserved and never delegated), and using one anyway produces a
+confusing `EAI_AGAIN`/`ENOTFOUND` failure deep in `chat_ui`'s server-side logs, which NextAuth
+then misreports to the user as "Sign in failed" — nothing to do with the actual credentials. If
+you don't have a real domain for the lab box, use
+**`<server-ip-with-dashes>.nip.io`** (e.g. `203-0-113-42.nip.io`) as `BASE_DOMAIN` — a free
+wildcard DNS service that resolves any such hostname straight to the embedded IP, with nothing
+to configure.
+
+**If running with `CADDY_LOCAL_CERTS=local_certs`**, also run `./trust-caddy-local-ca.sh` (repo
+root) once after the stack is up. Without it, `chat_ui`'s server-side login call to the backend
+fails TLS verification (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) — again surfaced by NextAuth as a
+generic "Sign in failed", not an obvious TLS error. The script extracts Caddy's internal CA
+root cert and makes `chat_ui`'s Node process trust it; safe to re-run any time (e.g. after
+`edge-proxy`'s data volume is recreated and a new internal CA is generated). Not needed, and
+should not be applied, once the server has a real public IP and uses genuine Let's Encrypt
+certs.
+
 ### 1.4 Firewall
 
 Docker-published ports bypass `ufw` entirely, so `mcp-hub`'s port 8080 is restricted directly
