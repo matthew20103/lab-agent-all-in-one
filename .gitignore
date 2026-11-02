@@ -3,6 +3,10 @@
 *.env
 .install-state
 
+# install.sh's final summary (DNS records, MCP slugs) saved for later reference — names this
+# server's own domain/IPs, regenerated fresh on every run, not meant to be version-controlled.
+install-summary.txt
+
 # Host-specific absolute paths to a manually-obtained TLS cert (obtain-manual-tls-cert.sh) —
 # empty by default (see edge-proxy/Caddyfile), populated per-server, never shared.
 edge-proxy/tls-override.conf
