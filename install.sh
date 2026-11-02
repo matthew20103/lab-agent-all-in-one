@@ -429,10 +429,12 @@ upsert_env_var "$ROOT/edge-proxy/.env" CADDY_LOCAL_CERTS "$CADDY_LOCAL_CERTS"
 # tls-override.conf if it's already been populated by that script (a real cert is in use). If
 # Docker ever started edge-proxy before this file existed, it silently created it as a
 # DIRECTORY instead (Docker's bind-mount behavior for a missing source) — which then makes
-# Caddy fail to parse `import tls-override.conf` and crash-loop. Self-heal that case too.
+# Caddy fail to parse `import tls-override.conf` and crash-loop. Self-heal that case too. No
+# sudo needed: removing an empty directory only needs write+execute on its PARENT
+# (edge-proxy/, owned by this user), not root, regardless of who/what created the entry.
 if [ -d "$ROOT/edge-proxy/tls-override.conf" ]; then
   echo "==> fixing edge-proxy/tls-override.conf (Docker created it as a directory, not a file)"
-  sudo rmdir "$ROOT/edge-proxy/tls-override.conf"
+  rmdir "$ROOT/edge-proxy/tls-override.conf"
 fi
 [ -f "$ROOT/edge-proxy/tls-override.conf" ] || : > "$ROOT/edge-proxy/tls-override.conf"
 sudo mkdir -p /etc/letsencrypt

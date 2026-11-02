@@ -78,9 +78,10 @@ sudo test -f "$CERT_FILE" && sudo test -f "$KEY_FILE" || {
 echo
 echo "==> Wiring edge-proxy (Caddy) to use this certificate"
 # Docker creates a missing bind-mount source as a directory, not a file — if edge-proxy ever
-# started before this file existed, fix that before writing real content into it.
+# started before this file existed, fix that before writing real content into it. No sudo
+# needed: removing an empty directory only needs write+execute on its parent, not root.
 if [ -d "$ROOT/edge-proxy/tls-override.conf" ]; then
-  sudo rmdir "$ROOT/edge-proxy/tls-override.conf"
+  rmdir "$ROOT/edge-proxy/tls-override.conf"
 fi
 printf 'tls %s %s\n' "$CERT_FILE" "$KEY_FILE" > "$ROOT/edge-proxy/tls-override.conf"
 sudo mkdir -p /etc/letsencrypt

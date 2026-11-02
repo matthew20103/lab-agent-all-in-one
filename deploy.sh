@@ -56,12 +56,19 @@ done
 # creates a missing bind-mount SOURCE as a directory instead of a file, which then makes Caddy
 # fail to parse `import tls-override.conf` and crash-loop with no useful error. Self-heal it
 # here too, the same way install.sh does, so a plain `git pull` + deploy never hits this.
+#
+# No sudo here, by design: this script runs non-interactively under CI (no TTY, no cached sudo
+# credential — a bare `sudo` call fails outright with "a terminal is required"). Neither
+# operation actually needs root: removing an empty directory only needs write+execute on its
+# PARENT (edge-proxy/, owned by the deploy user, not the entry itself), and /etc/letsencrypt is
+# guaranteed to already exist by the time this script runs at all — install.sh creates it with
+# sudo (interactively, with a real password prompt) in the very same step that writes the
+# edge-proxy/.env this script just checked for above.
 if [ -d "$ROOT/edge-proxy/tls-override.conf" ]; then
   echo "==> fixing edge-proxy/tls-override.conf (Docker created it as a directory, not a file)"
-  sudo rmdir "$ROOT/edge-proxy/tls-override.conf"
+  rmdir "$ROOT/edge-proxy/tls-override.conf"
 fi
 [ -f "$ROOT/edge-proxy/tls-override.conf" ] || : > "$ROOT/edge-proxy/tls-override.conf"
-sudo mkdir -p /etc/letsencrypt
 
 echo "==> mcp-hub"
 ( cd "$ROOT/my-mcp-tools/mcp-hub" && ./scripts/deploy.sh )
