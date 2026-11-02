@@ -3,13 +3,17 @@
 # mem0 API:  https://${MEMAPI_SUBDOMAIN:-memapi}.${BASE_DOMAIN}   (both via edge-proxy)
 # MCP: http://<UBUNTU_IP>:8080/memory/mcp (via mcp-proxy)
 # All secrets come from ~/mcp-secrets/memory.env on the server (see LAB_GUIDE.md Appendix 3.8).
-# BASE_DOMAIN, MEMORY_SUBDOMAIN, MEMAPI_SUBDOMAIN, MEM0_GATEWAY_URL and MEM0_DEFAULT_LLM_MODEL
-# come from mcp-hub/.env (written by install.sh), not ~/mcp-secrets/ (none of these are
-# secrets). MEM0_DEFAULT_LLM_MODEL has no sensible universal default — it must be a model
-# string YOUR OWN AI Gateway actually recognizes (plain model name, or
-# @<your-provider-alias>/<model> if your gateway uses provider routing). A value that only
-# existed on a different gateway instance gets rejected outright ("Provider rejected the
-# request as malformed"), confirmed live — don't hardcode one here again.
+# BASE_DOMAIN, MEMORY_SUBDOMAIN, MEMAPI_SUBDOMAIN, MEM0_GATEWAY_URL, MEM0_DEFAULT_LLM_MODEL and
+# MEM0_DEFAULT_EMBEDDER_MODEL come from mcp-hub/.env (written by install.sh), not
+# ~/mcp-secrets/ (none of these are secrets). Neither model var has a sensible universal
+# default — each must be a model string YOUR OWN AI Gateway actually recognizes (plain model
+# name, or @<your-provider-alias>/<model> if your gateway uses provider routing). A value that
+# only existed on a different gateway instance gets rejected outright ("Provider rejected the
+# request as malformed"), confirmed live — don't hardcode one here again. The two are SEPARATE
+# on purpose: MEM0_DEFAULT_LLM_MODEL must be a chat/generative model (fact extraction),
+# MEM0_DEFAULT_EMBEDDER_MODEL must be embedding-capable — mem0 reuses the LLM model for
+# embedding calls too if this one is left unset, which fails outright ("is not supported in
+# the embedContent API") against a chat-only model, also confirmed live.
 
 services:
   memory-mcp:
@@ -45,6 +49,7 @@ services:
       HISTORY_DB_PATH: /app/history/history.db
       OPENAI_BASE_URL: ${MEM0_GATEWAY_URL}
       MEM0_DEFAULT_LLM_MODEL: ${MEM0_DEFAULT_LLM_MODEL}
+      MEM0_DEFAULT_EMBEDDER_MODEL: ${MEM0_DEFAULT_EMBEDDER_MODEL}
       DASHBOARD_URL: https://${MEMORY_SUBDOMAIN:-memory}.${BASE_DOMAIN}
       AUTH_DISABLED: "false"
       MEM0_TELEMETRY: "false"

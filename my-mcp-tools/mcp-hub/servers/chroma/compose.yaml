@@ -13,7 +13,13 @@
 
 services:
   chroma:
-    image: chromadb/chroma:latest
+    # Pinned to match the chromadb==0.5.23 client pinned in ui/requirements.txt and
+    # mcp/requirements.txt below — `:latest` drifts forward over time while those client
+    # pins don't, and Chroma's embedding-function config serialization format has changed
+    # across versions, so a big enough version gap between client and server breaks collection
+    # creation outright (confirmed live: `{"detail":"...: '_type'"}` on create). Bump all three
+    # together, never just this one.
+    image: chromadb/chroma:0.5.23
     container_name: chroma
     volumes:
       - chroma_data:/data
