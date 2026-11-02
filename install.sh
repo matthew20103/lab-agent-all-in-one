@@ -319,6 +319,17 @@ default_mem0_model="$(existing MEM0_DEFAULT_LLM_MODEL "$ROOT/my-mcp-tools/mcp-hu
 read -rp "Default LLM model for mem0 memory, e.g. gpt-4o-mini or @<your-provider-alias>/<model> if your gateway uses provider routing [${default_mem0_model}]: " MEM0_DEFAULT_LLM_MODEL
 MEM0_DEFAULT_LLM_MODEL="${MEM0_DEFAULT_LLM_MODEL:-$default_mem0_model}"
 
+# A SEPARATE model from the one above: mem0 needs a distinct embedding-capable model for
+# generating vectors, not a chat/generative one — confirmed live that leaving this unset means
+# mem0 reuses MEM0_DEFAULT_LLM_MODEL for embedding calls too, which fails outright
+# ("is not supported in the embedContent API") if that's a chat-only model like a Gemini Pro
+# variant. Give it a real embedding model from your own gateway (e.g. an OpenAI
+# text-embedding-* model, or your gateway's Vertex text-embedding alias) — NOT the same value
+# as above unless your gateway specifically has one model that does both.
+default_mem0_embed_model="$(existing MEM0_DEFAULT_EMBEDDING_MODEL "$ROOT/my-mcp-tools/mcp-hub/.env")"
+read -rp "Default EMBEDDING model for mem0 memory (must be embedding-capable, not a chat model) [${default_mem0_embed_model}]: " MEM0_DEFAULT_EMBEDDING_MODEL
+MEM0_DEFAULT_EMBEDDING_MODEL="${MEM0_DEFAULT_EMBEDDING_MODEL:-$default_mem0_embed_model}"
+
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
 existing_basic_auth="$(unescape_dollars "$(existing BASIC_AUTH_USERS "$AGENT_ENV")")"
@@ -473,6 +484,7 @@ upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMORY_SUBDOMAIN "$MEMORY_SUBDO
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMAPI_SUBDOMAIN "$MEMAPI_SUBDOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_GATEWAY_URL "$MEM0_GATEWAY_URL"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_LLM_MODEL "$MEM0_DEFAULT_LLM_MODEL"
+upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_EMBEDDING_MODEL "$MEM0_DEFAULT_EMBEDDING_MODEL"
 
 chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
 
@@ -485,6 +497,7 @@ for pair in \
   "PORTKEY_API_KEY:$PORTKEY_API_KEY" \
   "MEM0_GATEWAY_URL:$MEM0_GATEWAY_URL" \
   "MEM0_DEFAULT_LLM_MODEL:$MEM0_DEFAULT_LLM_MODEL" \
+  "MEM0_DEFAULT_EMBEDDING_MODEL:$MEM0_DEFAULT_EMBEDDING_MODEL" \
 ; do
   name="${pair%%:*}"
   val="${pair#*:}"
