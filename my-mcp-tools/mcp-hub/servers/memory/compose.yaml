@@ -3,8 +3,13 @@
 # mem0 API:  https://${MEMAPI_SUBDOMAIN:-memapi}.${BASE_DOMAIN}   (both via edge-proxy)
 # MCP: http://<UBUNTU_IP>:8080/memory/mcp (via mcp-proxy)
 # All secrets come from ~/mcp-secrets/memory.env on the server (see LAB_GUIDE.md Appendix 3.8).
-# BASE_DOMAIN, MEMORY_SUBDOMAIN, MEMAPI_SUBDOMAIN and MEM0_GATEWAY_URL come from mcp-hub/.env
-# (written by install.sh), not ~/mcp-secrets/ (none of these are secrets).
+# BASE_DOMAIN, MEMORY_SUBDOMAIN, MEMAPI_SUBDOMAIN, MEM0_GATEWAY_URL and MEM0_DEFAULT_LLM_MODEL
+# come from mcp-hub/.env (written by install.sh), not ~/mcp-secrets/ (none of these are
+# secrets). MEM0_DEFAULT_LLM_MODEL has no sensible universal default — it must be a model
+# string YOUR OWN AI Gateway actually recognizes (plain model name, or
+# @<your-provider-alias>/<model> if your gateway uses provider routing). A value that only
+# existed on a different gateway instance gets rejected outright ("Provider rejected the
+# request as malformed"), confirmed live — don't hardcode one here again.
 
 services:
   memory-mcp:
@@ -39,7 +44,7 @@ services:
       APP_DB_NAME: mem0_app
       HISTORY_DB_PATH: /app/history/history.db
       OPENAI_BASE_URL: ${MEM0_GATEWAY_URL}
-      MEM0_DEFAULT_LLM_MODEL: "@google-vertex-sep/gemini-3.6-flash"
+      MEM0_DEFAULT_LLM_MODEL: ${MEM0_DEFAULT_LLM_MODEL}
       DASHBOARD_URL: https://${MEMORY_SUBDOMAIN:-memory}.${BASE_DOMAIN}
       AUTH_DISABLED: "false"
       MEM0_TELEMETRY: "false"

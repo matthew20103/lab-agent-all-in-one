@@ -308,6 +308,17 @@ default_mem0_gw="$(existing MEM0_GATEWAY_URL "$ROOT/my-mcp-tools/mcp-hub/.env")"
 default_mem0_gw="${default_mem0_gw:-$PORTKEY_GATEWAY_URL}"
 read -rp "AI Gateway's LLM API URL for mem0 memory (usually same as the Prisma AIRS AI Gateway URL above) [${default_mem0_gw}]: " MEM0_GATEWAY_URL
 MEM0_GATEWAY_URL="${MEM0_GATEWAY_URL:-$default_mem0_gw}"
+
+# The exact model string your own gateway expects for this — NOT something that can have a
+# working default here, since it depends entirely on how providers/virtual keys are named in
+# YOUR gateway's own console. A prior hardcoded value here ("@google-vertex-sep/gemini-3.6-flash")
+# only worked because that provider alias happened to exist on the original deployment's own
+# gateway instance — on any other gateway it's an unrecognized provider, and mem0's calls get
+# rejected outright ("Provider rejected the request as malformed"), confirmed live.
+default_mem0_model="$(existing MEM0_DEFAULT_LLM_MODEL "$ROOT/my-mcp-tools/mcp-hub/.env")"
+read -rp "Default LLM model for mem0 memory, e.g. gpt-4o-mini or @<your-provider-alias>/<model> if your gateway uses provider routing [${default_mem0_model}]: " MEM0_DEFAULT_LLM_MODEL
+MEM0_DEFAULT_LLM_MODEL="${MEM0_DEFAULT_LLM_MODEL:-$default_mem0_model}"
+
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
 existing_basic_auth="$(unescape_dollars "$(existing BASIC_AUTH_USERS "$AGENT_ENV")")"
@@ -461,19 +472,19 @@ upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMORY_SUBDOMAIN "$MEMORY_SUBDOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMAPI_SUBDOMAIN "$MEMAPI_SUBDOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_GATEWAY_URL "$MEM0_GATEWAY_URL"
+upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_LLM_MODEL "$MEM0_DEFAULT_LLM_MODEL"
 
 chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
 
 echo
 echo "==> Checking for still-empty required values"
+# CyberArk/Idira fields are intentionally excluded here — they're optional (Basic Auth works
+# standalone with zero Idira config; see the "Configure Idira SSO now?" prompt above), so an
+# empty value there is a deliberate choice, not something to warn about.
 for pair in \
   "PORTKEY_API_KEY:$PORTKEY_API_KEY" \
-  "CYBERARK_ISSUER:$CYBERARK_ISSUER" \
-  "CYBERARK_AUDIENCE:$CYBERARK_AUDIENCE" \
-  "CYBERARK_JWKS_URI:$CYBERARK_JWKS_URI" \
-  "CYBERARK_USER_CLIENT_ID:$CYBERARK_USER_CLIENT_ID" \
-  "CYBERARK_USER_CLIENT_SECRET:$CYBERARK_USER_CLIENT_SECRET" \
   "MEM0_GATEWAY_URL:$MEM0_GATEWAY_URL" \
+  "MEM0_DEFAULT_LLM_MODEL:$MEM0_DEFAULT_LLM_MODEL" \
 ; do
   name="${pair%%:*}"
   val="${pair#*:}"
