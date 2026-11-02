@@ -703,8 +703,17 @@ echo
 echo "MCP server slugs available to add in the dashboard's MCP Servers tab (must match exactly,"
 echo "case-sensitive — these come straight from mcp-hub's own compose.yaml, so this list always"
 echo "reflects whatever's actually registered there):"
-grep -oE 'servers/[a-zA-Z0-9_-]+/compose\.yaml' "$ROOT/my-mcp-tools/mcp-hub/compose.yaml" \
-  | sed -E 's#servers/([a-zA-Z0-9_-]+)/compose\.yaml#   \1#'
+# grep exits 1 (not an error here, just "no matches") if mcp-hub's compose.yaml ever has no
+# `include:` entries — under `set -euo pipefail` that would otherwise silently kill the WHOLE
+# script at this exact line, before the "Done"/DNS-record summary below even prints. `|| true`
+# makes an empty result list, not a crash.
+mcp_slugs="$(grep -oE 'servers/[a-zA-Z0-9_-]+/compose\.yaml' "$ROOT/my-mcp-tools/mcp-hub/compose.yaml" \
+  | sed -E 's#servers/([a-zA-Z0-9_-]+)/compose\.yaml#   \1#' || true)"
+if [ -n "$mcp_slugs" ]; then
+  echo "$mcp_slugs"
+else
+  echo "   (couldn't read any from my-mcp-tools/mcp-hub/compose.yaml — check it by hand)"
+fi
 echo "Each one's bearer token lives in ~/mcp-secrets/hub.env (MCP_TOKEN_<NAME>, auto-generated —"
 echo "see LAB_GUIDE.md Appendix 3 for the full per-tool reference)."
 echo
