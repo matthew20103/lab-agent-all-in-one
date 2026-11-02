@@ -632,29 +632,42 @@ echo "==> Starting edge-proxy"
 ( cd "$ROOT/edge-proxy" && docker compose up -d --build )
 
 # Confirm Caddy actually obtained real certs instead of leaving the user to guess — ACME's
-# HTTP-01 round trip isn't instant, so poll for a couple of minutes before calling it failed. A
+# HTTP-01 round trip isn't instant, so poll for up to a minute before calling it failed. A
 # FAILED here is expected (not a bug) for a server with no inbound 80/443 at all — that's what
-# obtain-manual-tls-cert.sh is for.
+# obtain-manual-tls-cert.sh is for. Checked in PARALLEL (one background job per subdomain) since
+# six sequential ~1-minute timeouts (worst case: no inbound connectivity, so EVERY one times
+# out) made this take up to 12 minutes — set SKIP_TLS_VERIFY=1 to skip the wait entirely (e.g.
+# you already know this server has no inbound connectivity and are going straight to
+# obtain-manual-tls-cert.sh anyway).
 echo
-echo "==> Verifying TLS certificates (may take up to ~2 minutes on first issuance)"
-for sub in "${ALL_SUBDOMAINS[@]}"; do
-  fqdn="${sub}.${BASE_DOMAIN}"
-  ok=0
-  for _ in $(seq 1 24); do
-    if curl -fsS --max-time 5 "https://${fqdn}" -o /dev/null 2>/dev/null; then ok=1; break; fi
-    sleep 5
+if [ "${SKIP_TLS_VERIFY:-0}" = "1" ]; then
+  echo "==> Skipping TLS certificate verification (SKIP_TLS_VERIFY=1)"
+else
+  echo "==> Verifying TLS certificates (parallel, up to ~1 minute; set SKIP_TLS_VERIFY=1 to skip)"
+  tls_check_pids=()
+  for sub in "${ALL_SUBDOMAINS[@]}"; do
+    (
+      fqdn="${sub}.${BASE_DOMAIN}"
+      ok=0
+      for _ in $(seq 1 12); do
+        if curl -fsS --max-time 5 "https://${fqdn}" -o /dev/null 2>/dev/null; then ok=1; break; fi
+        sleep 5
+      done
+      if [ "$ok" -eq 1 ]; then
+        printf '   OK: https://%s\n' "$fqdn"
+      else
+        printf '   FAILED: https://%s — if this server has no inbound 80/443 at all, that'"'"'s
+            expected: run ./obtain-manual-tls-cert.sh once this script finishes.
+            Otherwise check: does its DNS A record point here yet? are ports 80/443
+            reachable from the public internet (cloud provider firewall/security
+            group, not just ufw)? Full error:
+            (cd edge-proxy && docker compose logs edge-proxy --tail 50)\n' "$fqdn" >&2
+      fi
+    ) &
+    tls_check_pids+=("$!")
   done
-  if [ "$ok" -eq 1 ]; then
-    echo "   OK: https://${fqdn}"
-  else
-    echo "   FAILED: https://${fqdn} — if this server has no inbound 80/443 at all, that's" >&2
-    echo "            expected: run ./obtain-manual-tls-cert.sh once this script finishes." >&2
-    echo "            Otherwise check: does its DNS A record point here yet? are ports 80/443" >&2
-    echo "            reachable from the public internet (cloud provider firewall/security" >&2
-    echo "            group, not just ufw)? Full error:" >&2
-    echo "            (cd edge-proxy && docker compose logs edge-proxy --tail 50)" >&2
-  fi
-done
+  for pid in "${tls_check_pids[@]}"; do wait "$pid"; done
+fi
 
 # ---------------------------------------------------------------------------
 # 7. Summary
