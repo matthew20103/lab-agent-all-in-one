@@ -713,37 +713,44 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Summary
+# 7. Summary — printed to the terminal AND saved to install-summary.txt so it's still there to
+# reference later without having to scroll back or re-run the whole script. Overwritten fresh
+# on every run (it's a snapshot of current state, not a log) — never committed, since it names
+# this server's actual domain/IPs (see .gitignore). Contains no secrets: same non-sensitive
+# info already shown on screen today, nothing new added here.
 # ---------------------------------------------------------------------------
-echo
-echo "== Done =="
-echo "Point these DNS A records at this server's public IP (Caddy can't issue real certs until"
-echo "they resolve — or skip that and run ./obtain-manual-tls-cert.sh if this server has no"
-echo "inbound 80/443 at all, see LAB_GUIDE.md Appendix 1.3):"
-for sub in "${ALL_SUBDOMAINS[@]}"; do
-  echo "   ${sub}.${BASE_DOMAIN}"
-done
-echo
-echo "mcp-hub's bearer-token proxy stays on http://<server-ip>:8080, reachable only from ${GATEWAY_SOURCE_IP}."
-echo
-echo "MCP server slugs available to add in the dashboard's MCP Servers tab (must match exactly,"
-echo "case-sensitive — these come straight from mcp-hub's own compose.yaml, so this list always"
-echo "reflects whatever's actually registered there):"
 # grep exits 1 (not an error here, just "no matches") if mcp-hub's compose.yaml ever has no
 # `include:` entries — under `set -euo pipefail` that would otherwise silently kill the WHOLE
 # script at this exact line, before the "Done"/DNS-record summary below even prints. `|| true`
 # makes an empty result list, not a crash.
 mcp_slugs="$(grep -oE 'servers/[a-zA-Z0-9_-]+/compose\.yaml' "$ROOT/my-mcp-tools/mcp-hub/compose.yaml" \
   | sed -E 's#servers/([a-zA-Z0-9_-]+)/compose\.yaml#   \1#' || true)"
-if [ -n "$mcp_slugs" ]; then
-  echo "$mcp_slugs"
-else
-  echo "   (couldn't read any from my-mcp-tools/mcp-hub/compose.yaml — check it by hand)"
-fi
-echo "Each one's bearer token lives in ~/mcp-secrets/hub.env (MCP_TOKEN_<NAME>, auto-generated —"
-echo "see LAB_GUIDE.md Appendix 3 for the full per-tool reference)."
-echo
-if [ "$NEED_RELOGIN" -eq 1 ]; then
-  echo "Reminder: log out and back in for your 'docker' group membership to take effect."
-fi
-echo "Re-run this script any time to update the domain, dashboard password, or gateway IP."
+
+{
+  echo
+  echo "== Done == (install.sh run on $(date -u '+%Y-%m-%d %H:%M:%S UTC'))"
+  echo "Point these DNS A records at this server's public IP (Caddy can't issue real certs until"
+  echo "they resolve — or skip that and run ./obtain-manual-tls-cert.sh if this server has no"
+  echo "inbound 80/443 at all, see LAB_GUIDE.md Appendix 1.3):"
+  for sub in "${ALL_SUBDOMAINS[@]}"; do
+    echo "   ${sub}.${BASE_DOMAIN}"
+  done
+  echo
+  echo "mcp-hub's bearer-token proxy stays on http://<server-ip>:8080, reachable only from ${GATEWAY_SOURCE_IP}."
+  echo
+  echo "MCP server slugs available to add in the dashboard's MCP Servers tab (must match exactly,"
+  echo "case-sensitive — these come straight from mcp-hub's own compose.yaml, so this list always"
+  echo "reflects whatever's actually registered there):"
+  if [ -n "$mcp_slugs" ]; then
+    echo "$mcp_slugs"
+  else
+    echo "   (couldn't read any from my-mcp-tools/mcp-hub/compose.yaml — check it by hand)"
+  fi
+  echo "Each one's bearer token lives in ~/mcp-secrets/hub.env (MCP_TOKEN_<NAME>, auto-generated —"
+  echo "see LAB_GUIDE.md Appendix 3 for the full per-tool reference)."
+  echo
+  if [ "$NEED_RELOGIN" -eq 1 ]; then
+    echo "Reminder: log out and back in for your 'docker' group membership to take effect."
+  fi
+  echo "Re-run this script any time to update the domain, dashboard password, or gateway IP."
+} 2>&1 | tee "$ROOT/install-summary.txt"
