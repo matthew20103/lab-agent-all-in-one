@@ -245,7 +245,7 @@ export function MessageBubble({ message, isStreaming = false, onUpdate, showFeed
         {message.routingInfo && (
           <div className="mt-2 bg-muted/50 border border-border rounded-md px-3 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5 font-semibold text-foreground mb-1">
-              🔀 Portkey
+              🔀 Prisma AIRS AI Gateway
             </div>
             {message.routingInfo.split('\n').map((line, i) => (
               <div key={i} className="font-mono leading-relaxed"

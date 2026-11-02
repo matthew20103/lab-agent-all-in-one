@@ -64,7 +64,7 @@ export function Sidebar({ onNewSession, uploadedFiles = [], taskType, onTaskType
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">Routes your message to the right model via Portkey.</p>
+          <p className="text-xs text-muted-foreground mt-2">Routes your message to the right model via Prisma AIRS AI Gateway.</p>
         </section>
 
         <section>

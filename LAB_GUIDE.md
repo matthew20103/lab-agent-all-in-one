@@ -38,7 +38,7 @@ flowchart LR
     Agent["Agent Backend (FastAPI)\nhttps://agent.{your-domain}"]
     Dash["Admin Dashboard\nhttps://dashboard.{your-domain}"]
     Redis[("Redis\n(session + live config)")]
-    Gateway[["AI Gateway\n(Portkey / Prisma AIRS)"]]
+    Gateway[["Prisma AIRS AI Gateway"]]
 
     You -->|chat| Chat
     You -->|configure| Dash
@@ -80,7 +80,7 @@ When it finishes, confirm the three sites are reachable:
 
 In the dashboard's **Sidebar → AI Gateway** section:
 
-1. **Gateway URL** — your Portkey/Prisma AIRS gateway's chat-completions endpoint, e.g.
+1. **Gateway URL** — your Prisma AIRS AI Gateway's chat-completions endpoint, e.g.
    `http://<gateway-host>:8787/v1` (your instructor will give you the exact value).
 2. **Gateway API Key** — the API key for that gateway.
 3. Click **Save gateway settings**.
@@ -137,7 +137,7 @@ and behavior. Try each of these in turn, saving and sending the same test messag
    (High/Medium/Low) and note what you'd need to verify it.
 ```
 
-After each test message, open your AI Gateway's own admin console (Portkey/Prisma AIRS) and
+After each test message, open your Prisma AIRS AI Gateway's own admin console and
 find the **logs/traces** view. Each chat message you send should appear as a trace there,
 showing:
 - The exact system prompt + your message that was sent
@@ -355,7 +355,7 @@ flowchart TB
         ChromaUi --> ChromaDb
     end
 
-    Gateway[["External AI Gateway\n(Portkey / Prisma AIRS)"]]
+    Gateway[["External Prisma AIRS AI Gateway"]]
 
     Internet --> Edge
     Agent -->|LLM calls, always| Gateway
@@ -509,7 +509,7 @@ revisiting if your document corpus grows large; CPU/RAM scale much more slowly w
 - **`install.sh`** — one-time, interactive. Checks/installs prerequisites (Docker, `ca-certificates`,
   curl, openssl, ufw), then prompts for everything needed to run: domain/ACME email/public
   reachability, dashboard+ragui credentials, the AI Gateway's source IP, and every business
-  secret (Portkey, CyberArk Identity/Idira, mem0's AI Gateway key). Writes every `.env` file,
+  secret (Prisma AIRS AI Gateway, CyberArk Identity/Idira, mem0's AI Gateway key). Writes every `.env` file,
   sets up the firewall, then does the first `docker compose up`. Safe to re-run — shows prior
   answers as defaults.
 - **`deploy.sh`** — every time after that, non-interactive. Assumes `install.sh` already ran

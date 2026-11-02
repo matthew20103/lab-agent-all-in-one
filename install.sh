@@ -285,19 +285,19 @@ AGENT_ENV="$ROOT/my-ai-agent/agent-backend/.env"
 CHAT_ENV="$ROOT/my-ai-agent/client-chat-ui/.env"
 
 default_portkey_gw="$(existing PORTKEY_GATEWAY_URL "$AGENT_ENV")"
-read -rp "Portkey gateway URL, e.g. http://<gateway-host>:8787/v1 [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
+read -rp "Prisma AIRS AI Gateway URL, e.g. http://<gateway-host>/v1 [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
 PORTKEY_GATEWAY_URL="${PORTKEY_GATEWAY_URL:-$default_portkey_gw}"
 
 existing_portkey_key="$(unescape_dollars "$(existing PORTKEY_API_KEY "$AGENT_ENV")")"
-read_masked "Portkey API key (leave blank to keep the existing one): "
+read_masked "Prisma AIRS AI Gateway API key (leave blank to keep the existing one): "
 PORTKEY_API_KEY="${MASKED_REPLY:-$existing_portkey_key}"
 
 default_portkey_mcp_gw="$(existing PORTKEY_MCP_GATEWAY_URL "$AGENT_ENV")"
-read -rp "Portkey MCP gateway URL, e.g. http://<gateway-host>:8788 [${default_portkey_mcp_gw}]: " PORTKEY_MCP_GATEWAY_URL
+read -rp "Prisma AIRS AI Gateway MCP gateway URL, e.g. http://<gateway-host>:8788 [${default_portkey_mcp_gw}]: " PORTKEY_MCP_GATEWAY_URL
 PORTKEY_MCP_GATEWAY_URL="${PORTKEY_MCP_GATEWAY_URL:-$default_portkey_mcp_gw}"
 
 default_portkey_slugs="$(existing PORTKEY_MCP_SERVER_SLUGS "$AGENT_ENV")"
-read -rp "Portkey MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
+read -rp "Prisma AIRS AI Gateway MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
 
 # mem0's own OpenAI-compatible REST client needs the gateway's plain LLM API endpoint — a
 # different host:port/path than PORTKEY_GATEWAY_URL above on SOME gateway setups, so it's kept
@@ -306,7 +306,7 @@ read -rp "Portkey MCP server slugs, comma-separated, optional [${default_portkey
 # the whole URL retyped.
 default_mem0_gw="$(existing MEM0_GATEWAY_URL "$ROOT/my-mcp-tools/mcp-hub/.env")"
 default_mem0_gw="${default_mem0_gw:-$PORTKEY_GATEWAY_URL}"
-read -rp "AI Gateway's LLM API URL for mem0 memory (usually same as Portkey gateway URL above) [${default_mem0_gw}]: " MEM0_GATEWAY_URL
+read -rp "AI Gateway's LLM API URL for mem0 memory (usually same as the Prisma AIRS AI Gateway URL above) [${default_mem0_gw}]: " MEM0_GATEWAY_URL
 MEM0_GATEWAY_URL="${MEM0_GATEWAY_URL:-$default_mem0_gw}"
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
@@ -495,7 +495,7 @@ chmod 700 "$MCP_SECRETS_DIR"
 if [ -f "$MCP_SECRETS_DIR/memory.env" ]; then
   echo "   ~/mcp-secrets/memory.env already exists — leaving it as-is."
 else
-  read_masked "AI Gateway API key for mem0 memory (leave blank to reuse the Portkey API key above): "
+  read_masked "AI Gateway API key for mem0 memory (leave blank to reuse the Prisma AIRS AI Gateway API key above): "
   memory_gateway_key="${MASKED_REPLY:-$PORTKEY_API_KEY}"
   if [ -n "$memory_gateway_key" ]; then
     ( umask 077
