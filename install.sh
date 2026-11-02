@@ -636,14 +636,15 @@ echo "==> Starting edge-proxy"
 # FAILED here is expected (not a bug) for a server with no inbound 80/443 at all — that's what
 # obtain-manual-tls-cert.sh is for. Checked in PARALLEL (one background job per subdomain) since
 # six sequential ~1-minute timeouts (worst case: no inbound connectivity, so EVERY one times
-# out) made this take up to 12 minutes — set SKIP_TLS_VERIFY=1 to skip the wait entirely (e.g.
-# you already know this server has no inbound connectivity and are going straight to
-# obtain-manual-tls-cert.sh anyway).
+# out) made this take up to 12 minutes. Ask instead of requiring an env var to skip it —
+# nothing to remember, just answer "n" when you already know this server has no inbound
+# connectivity and are going straight to obtain-manual-tls-cert.sh anyway.
 echo
-if [ "${SKIP_TLS_VERIFY:-0}" = "1" ]; then
-  echo "==> Skipping TLS certificate verification (SKIP_TLS_VERIFY=1)"
+read -rp "Verify TLS certificates now (up to ~1 minute)? [Y/n]: " verify_tls_input
+if [[ "$verify_tls_input" =~ ^[Nn] ]]; then
+  echo "==> Skipping TLS certificate verification"
 else
-  echo "==> Verifying TLS certificates (parallel, up to ~1 minute; set SKIP_TLS_VERIFY=1 to skip)"
+  echo "==> Verifying TLS certificates (parallel, up to ~1 minute)"
   tls_check_pids=()
   for sub in "${ALL_SUBDOMAINS[@]}"; do
     (
