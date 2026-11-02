@@ -50,6 +50,19 @@ for f in edge-proxy/.env my-ai-agent/agent-backend/.env my-ai-agent/client-chat-
   fi
 done
 
+# edge-proxy/docker-compose.yml bind-mounts tls-override.conf as a FILE (see
+# obtain-manual-tls-cert.sh). install.sh creates it on first setup, but a server kept up to
+# date purely via this script (the normal CI path) never ran that — and Docker silently
+# creates a missing bind-mount SOURCE as a directory instead of a file, which then makes Caddy
+# fail to parse `import tls-override.conf` and crash-loop with no useful error. Self-heal it
+# here too, the same way install.sh does, so a plain `git pull` + deploy never hits this.
+if [ -d "$ROOT/edge-proxy/tls-override.conf" ]; then
+  echo "==> fixing edge-proxy/tls-override.conf (Docker created it as a directory, not a file)"
+  sudo rmdir "$ROOT/edge-proxy/tls-override.conf"
+fi
+[ -f "$ROOT/edge-proxy/tls-override.conf" ] || : > "$ROOT/edge-proxy/tls-override.conf"
+sudo mkdir -p /etc/letsencrypt
+
 echo "==> mcp-hub"
 ( cd "$ROOT/my-mcp-tools/mcp-hub" && ./scripts/deploy.sh )
 
