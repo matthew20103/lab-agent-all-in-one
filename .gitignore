@@ -3,6 +3,10 @@
 *.env
 .install-state
 
+# Host-specific absolute paths to a manually-obtained TLS cert (obtain-manual-tls-cert.sh) —
+# empty by default (see edge-proxy/Caddyfile), populated per-server, never shared.
+edge-proxy/tls-override.conf
+
 # Generated per-server TLS material (none expected here, but matches mcp-hub's own convention)
 my-mcp-tools/mcp-hub/proxy/certs/
 

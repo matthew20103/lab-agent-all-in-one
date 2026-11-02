@@ -428,6 +428,18 @@ yet or ports 80/443 aren't reachable from the public internet (check your cloud 
 firewall/security group, not just `ufw` — Docker-published ports plus a permissive `ufw` won't
 help if the cloud network layer itself is blocking the port).
 
+**A third option, for a server with no inbound 80/443 at all** (so HTTP-01 above can never
+succeed, no matter how correct your DNS is) **but full control over this domain's DNS records**:
+run `./obtain-manual-tls-cert.sh` (repo root) after `install.sh`. It walks you through Let's
+Encrypt's **DNS-01** challenge — you publish a `_acme-challenge.{BASE_DOMAIN}` TXT record
+yourself when prompted, which Let's Encrypt validates by querying DNS directly, never by
+connecting to this server — and wires the resulting **real, trusted, wildcard**
+(`*.{BASE_DOMAIN}`) certificate into Caddy via `edge-proxy/tls-override.conf` (empty by default,
+so this changes nothing unless you run the script). One manual challenge covers all six
+subdomains at once. Let's Encrypt certs last ~90 days and this manual flow has no auto-renewal
+hook, so re-run the script before then — it'll skip straight past the challenge and just
+re-confirm the wiring if the existing cert still has more than 14 days left.
+
 `install.sh` rejects a `BASE_DOMAIN` ending in a reserved/special-use TLD
 (`.local`, `.test`, `.example`, `.invalid`, `.localhost`, `.internal`) at prompt time — these
 are guaranteed to never resolve via real DNS (`.local` needs mDNS, which Docker containers

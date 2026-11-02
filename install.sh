@@ -253,6 +253,9 @@ else
   echo "   Using Caddy's internal CA (self-signed-style certs) instead of public Let's Encrypt —"
   echo "   browsers will warn \"not trusted\" and curl needs -k/--insecure until this server is"
   echo "   publicly reachable and you re-run this script answering \"y\" here."
+  echo "   No inbound 80/443 at all, but you DO control this domain's DNS? Skip self-signed"
+  echo "   entirely — after this script finishes, run ./obtain-manual-tls-cert.sh instead for a"
+  echo "   real trusted wildcard cert via a manual DNS-01 challenge (see LAB_GUIDE.md Appendix 1.3)."
 fi
 
 default_dash_user="$(existing DASHBOARD_USER "$ROOT/edge-proxy/.env")"
@@ -420,6 +423,12 @@ upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$(escape_dollars
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_USER "$MCP_UI_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" MCP_UI_PASSWORD_HASH "$(escape_dollars "$MCP_UI_PASSWORD_HASH")"
 upsert_env_var "$ROOT/edge-proxy/.env" CADDY_LOCAL_CERTS "$CADDY_LOCAL_CERTS"
+
+# edge-proxy/docker-compose.yml bind-mounts both of these — they must exist before `docker
+# compose up` runs, even for servers that never run obtain-manual-tls-cert.sh. Never clobber
+# tls-override.conf if it's already been populated by that script (a real cert is in use).
+[ -f "$ROOT/edge-proxy/tls-override.conf" ] || : > "$ROOT/edge-proxy/tls-override.conf"
+sudo mkdir -p /etc/letsencrypt
 
 upsert_env_var "$AGENT_ENV" BASE_DOMAIN "$BASE_DOMAIN"
 upsert_env_var "$AGENT_ENV" PORTKEY_GATEWAY_URL "$PORTKEY_GATEWAY_URL"

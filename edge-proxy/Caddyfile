@@ -18,8 +18,17 @@
 # self-signed-style cert) unless you import Caddy's root CA, and `curl` needs `-k`/`--insecure`.
 # Switch back (re-run install.sh, answer the public-reachability prompt "yes") once this is
 # actually reachable from the public internet.
+#
+# A third option, for a server with outbound-only connectivity (no inbound 80/443 at all, so
+# HTTP-01 above can never work regardless of DNS) but full DNS control: run
+# ./obtain-manual-tls-cert.sh (repo root) to get a real trusted wildcard cert via a manual
+# DNS-01 challenge. Every site block below starts with `import tls-override.conf` — that file
+# is empty by default (so this changes nothing until that script is run) and, once populated,
+# injects a `tls <cert> <key>` directive that makes Caddy use that static real cert instead of
+# either automatic method above. See LAB_GUIDE.md Appendix 1.3.
 
 {$CHAT_SUBDOMAIN:chat}.{$BASE_DOMAIN} {
+    import tls-override.conf
     log {
         output stdout
     }
@@ -32,6 +41,7 @@
 }
 
 {$AGENT_SUBDOMAIN:agent}.{$BASE_DOMAIN} {
+    import tls-override.conf
     log {
         output stdout
     }
@@ -39,6 +49,7 @@
 }
 
 {$DASHBOARD_SUBDOMAIN:dashboard}.{$BASE_DOMAIN} {
+    import tls-override.conf
     log {
         output stdout
     }
@@ -49,6 +60,7 @@
 }
 
 {$MEMORY_SUBDOMAIN:memory}.{$BASE_DOMAIN} {
+    import tls-override.conf
     log {
         output stdout
     }
@@ -56,6 +68,7 @@
 }
 
 {$MEMAPI_SUBDOMAIN:memapi}.{$BASE_DOMAIN} {
+    import tls-override.conf
     log {
         output stdout
     }
@@ -63,6 +76,7 @@
 }
 
 {$RAGUI_SUBDOMAIN:ragui}.{$BASE_DOMAIN} {
+    import tls-override.conf
     log {
         output stdout
     }
