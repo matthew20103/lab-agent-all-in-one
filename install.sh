@@ -136,13 +136,45 @@ existing() { # existing KEY FILE -> prints current value or empty
 escape_dollars() { printf '%s' "${1//\$/\$\$}"; }
 unescape_dollars() { printf '%s' "${1//\$\$/\$}"; }
 
+# validate_dns_label LABEL -> empty stdout + exit 1 if invalid, else echoes it back.
+# A DNS label: non-empty, only a-z0-9-, never starting/ending with '-', no dots.
+validate_dns_label() {
+  local label="$1"
+  [[ "$label" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
+  printf '%s' "$label"
+}
+
+# read_masked PROMPT -> sets $MASKED_REPLY, echoing one '*' per keystroke instead of either
+# the plaintext (plain `read`) or total silence (`read -s`) — a password with no feedback at
+# all makes it impossible to tell a stuck terminal from a slow one, or to spot a typo before
+# submitting.
+read_masked() {
+  local prompt="$1" char reply=''
+  printf '%s' "$prompt" >&2
+  while IFS= read -r -s -n1 char; do
+    [ -z "$char" ] && break   # Enter: `read -n1` reads the newline as an empty $char
+    if [ "$char" = $'\x7f' ] || [ "$char" = $'\b' ]; then   # Backspace/Delete
+      if [ -n "$reply" ]; then
+        reply="${reply%?}"
+        printf '\b \b' >&2
+      fi
+      continue
+    fi
+    reply+="$char"
+    printf '*' >&2
+  done
+  printf '\n' >&2
+  MASKED_REPLY="$reply"
+}
+
 default_domain="$(existing BASE_DOMAIN "$ROOT/edge-proxy/.env")"
 read -rp "Base domain, e.g. example.com [${default_domain}]: " BASE_DOMAIN
 BASE_DOMAIN="${BASE_DOMAIN:-$default_domain}"
 [ -n "$BASE_DOMAIN" ] || { echo "ERROR: a base domain is required." >&2; exit 1; }
 
-# Every service here is reached by subdomain (agent.${BASE_DOMAIN}, chat.${BASE_DOMAIN}, ...),
-# so one container calling another by that hostname needs it to actually resolve via real DNS.
+# Every service here is reached by a subdomain of BASE_DOMAIN (agent./chat./... — prefixes
+# chosen below), so one container calling another by that hostname needs it to actually
+# resolve via real DNS.
 # .local/.test/.example/.invalid/.localhost/.internal are reserved special-use names that are
 # GUARANTEED to never resolve that way (.local specifically needs mDNS, which doesn't work from
 # inside a Docker container at all; the others are reserved by IANA so they're never delegated)
@@ -165,6 +197,30 @@ case ".${BASE_DOMAIN}." in
     exit 1
     ;;
 esac
+
+# Each service is reached by its own subdomain of BASE_DOMAIN — prefixes default to the
+# project's conventional names but are editable here, e.g. to avoid a clash with an existing
+# hostname or to match a naming scheme already used elsewhere.
+prompt_subdomain() { # prompt_subdomain VARNAME LABEL DEFAULT -> sets $VARNAME
+  local __var="$1" label="$2" fallback="$3" current value
+  current="$(existing "$__var" "$ROOT/edge-proxy/.env")"
+  current="${current:-$fallback}"
+  while true; do
+    read -rp "Subdomain for $label [${current}]: " value
+    value="${value:-$current}"
+    value="$(printf '%s' "$value" | tr 'A-Z' 'a-z')"   # DNS is case-insensitive; normalize instead of rejecting "Chat"
+    value="$(validate_dns_label "$value")" && break
+    echo "ERROR: must be a valid DNS label (letters/digits/hyphens only, can't start/end with -, no dots)." >&2
+  done
+  printf -v "$__var" '%s' "$value"
+}
+
+prompt_subdomain CHAT_SUBDOMAIN "the chat UI" chat
+prompt_subdomain AGENT_SUBDOMAIN "the backend API/WebSocket" agent
+prompt_subdomain DASHBOARD_SUBDOMAIN "the admin dashboard" dashboard
+prompt_subdomain MEMORY_SUBDOMAIN "the agent-memory dashboard" memory
+prompt_subdomain MEMAPI_SUBDOMAIN "the agent-memory API" memapi
+prompt_subdomain RAGUI_SUBDOMAIN "the knowledge-base (Chroma) UI" ragui
 
 default_email="$(existing ACME_EMAIL "$ROOT/edge-proxy/.env")"
 read -rp "Email for Let's Encrypt notifications [${default_email}]: " ACME_EMAIL
@@ -205,8 +261,8 @@ read -rp "Admin dashboard username [${default_dash_user}]: " DASHBOARD_USER
 DASHBOARD_USER="${DASHBOARD_USER:-$default_dash_user}"
 
 existing_hash="$(unescape_dollars "$(existing DASHBOARD_PASSWORD_HASH "$ROOT/edge-proxy/.env")")"
-read -rsp "Admin dashboard password (leave blank to keep the existing one): " DASHBOARD_PASSWORD
-echo
+read_masked "Admin dashboard password (leave blank to keep the existing one): "
+DASHBOARD_PASSWORD="$MASKED_REPLY"
 if [ -n "$DASHBOARD_PASSWORD" ]; then
   DASHBOARD_PASSWORD_HASH="$(docker run --rm caddy:latest caddy hash-password --plaintext "$DASHBOARD_PASSWORD")"
 else
@@ -220,8 +276,8 @@ read -rp "MCP knowledge-base UI (ragui) username [${default_mcp_ui_user}]: " MCP
 MCP_UI_USER="${MCP_UI_USER:-$default_mcp_ui_user}"
 
 existing_mcp_ui_hash="$(unescape_dollars "$(existing MCP_UI_PASSWORD_HASH "$ROOT/edge-proxy/.env")")"
-read -rsp "MCP knowledge-base UI (ragui) password (leave blank to keep the existing one): " MCP_UI_PASSWORD
-echo
+read_masked "MCP knowledge-base UI (ragui) password (leave blank to keep the existing one): "
+MCP_UI_PASSWORD="$MASKED_REPLY"
 if [ -n "$MCP_UI_PASSWORD" ]; then
   MCP_UI_PASSWORD_HASH="$(docker run --rm caddy:latest caddy hash-password --plaintext "$MCP_UI_PASSWORD")"
 else
@@ -250,9 +306,8 @@ read -rp "Portkey gateway URL [${default_portkey_gw}]: " PORTKEY_GATEWAY_URL
 PORTKEY_GATEWAY_URL="${PORTKEY_GATEWAY_URL:-$default_portkey_gw}"
 
 existing_portkey_key="$(unescape_dollars "$(existing PORTKEY_API_KEY "$AGENT_ENV")")"
-read -rsp "Portkey API key (leave blank to keep the existing one): " portkey_key_input
-echo
-PORTKEY_API_KEY="${portkey_key_input:-$existing_portkey_key}"
+read_masked "Portkey API key (leave blank to keep the existing one): "
+PORTKEY_API_KEY="${MASKED_REPLY:-$existing_portkey_key}"
 
 default_portkey_mcp_gw="$(existing PORTKEY_MCP_GATEWAY_URL "$AGENT_ENV")"
 read -rp "Portkey MCP gateway URL [${default_portkey_mcp_gw}]: " PORTKEY_MCP_GATEWAY_URL
@@ -273,26 +328,56 @@ existing_basic_auth="$(unescape_dollars "$(existing BASIC_AUTH_USERS "$AGENT_ENV
 read -rp "BASIC_AUTH_USERS fallback login (user:bcrypt-hash,...), optional, leave blank to keep existing: " basic_auth_input
 BASIC_AUTH_USERS="${basic_auth_input:-$existing_basic_auth}"
 
+# Pre-load existing values (if any) so the "configure now?" default reflects whether this has
+# already been set up on a prior run, not just whether the user happens to want to touch it now.
 default_cyberark_issuer="$(existing CYBERARK_ISSUER "$AGENT_ENV")"
-read -rp "CyberArk Identity (Idira) issuer URL [${default_cyberark_issuer}]: " CYBERARK_ISSUER
-CYBERARK_ISSUER="${CYBERARK_ISSUER:-$default_cyberark_issuer}"
-
 default_cyberark_audience="$(existing CYBERARK_AUDIENCE "$AGENT_ENV")"
-read -rp "CyberArk Identity (Idira) audience [${default_cyberark_audience}]: " CYBERARK_AUDIENCE
-CYBERARK_AUDIENCE="${CYBERARK_AUDIENCE:-$default_cyberark_audience}"
-
 default_cyberark_jwks="$(existing CYBERARK_JWKS_URI "$AGENT_ENV")"
-read -rp "CyberArk Identity (Idira) JWKS URI [${default_cyberark_jwks}]: " CYBERARK_JWKS_URI
-CYBERARK_JWKS_URI="${CYBERARK_JWKS_URI:-$default_cyberark_jwks}"
-
 default_cyberark_client_id="$(existing CYBERARK_USER_CLIENT_ID "$CHAT_ENV")"
-read -rp "CyberArk Identity (Idira) chat client ID [${default_cyberark_client_id}]: " CYBERARK_USER_CLIENT_ID
-CYBERARK_USER_CLIENT_ID="${CYBERARK_USER_CLIENT_ID:-$default_cyberark_client_id}"
-
 existing_cyberark_secret="$(unescape_dollars "$(existing CYBERARK_USER_CLIENT_SECRET "$CHAT_ENV")")"
-read -rsp "CyberArk Identity (Idira) chat client secret (leave blank to keep the existing one): " cyberark_secret_input
+
+CYBERARK_ISSUER="$default_cyberark_issuer"
+CYBERARK_AUDIENCE="$default_cyberark_audience"
+CYBERARK_JWKS_URI="$default_cyberark_jwks"
+CYBERARK_USER_CLIENT_ID="$default_cyberark_client_id"
+CYBERARK_USER_CLIENT_SECRET="$existing_cyberark_secret"
+
 echo
-CYBERARK_USER_CLIENT_SECRET="${cyberark_secret_input:-$existing_cyberark_secret}"
+echo "==> Idira (CyberArk Identity) SSO — optional"
+echo "    This lab's chat login works two ways: Basic Auth (BASIC_AUTH_USERS, above) always"
+echo "    works with no setup, OR \"Sign in with Idira\" OAuth/OIDC, which needs a CyberArk"
+echo "    Identity application registered in your own tenant. If you're only using Basic Auth"
+echo "    for now, answer 'n' below and skip straight past this — you can always re-run"
+echo "    install.sh later once Idira is set up."
+echo "    If you ARE configuring Idira: in your CyberArk Identity admin console, register (or"
+echo "    find) an OIDC web app for this chat UI with redirect URI:"
+echo "      https://${CHAT_SUBDOMAIN}.${BASE_DOMAIN}/api/auth/callback/cyberark"
+echo "    That registration gives you the Client ID/Secret below. Issuer is your tenant's OIDC"
+echo "    issuer URL (serves /.well-known/openid-configuration); Audience is the API resource"
+echo "    identifier Idira issues access tokens for; JWKS URI is usually that same issuer's"
+echo "    own /.well-known/openid-configuration \"jwks_uri\" value."
+default_configure_idira="n"
+[ -n "$default_cyberark_issuer" ] && default_configure_idira="y"
+read -rp "    Configure Idira SSO now? [${default_configure_idira}]: " configure_idira_input
+configure_idira_input="${configure_idira_input:-$default_configure_idira}"
+if [[ "$configure_idira_input" =~ ^[Yy] ]]; then
+  read -rp "CyberArk Identity (Idira) issuer URL [${default_cyberark_issuer}]: " CYBERARK_ISSUER
+  CYBERARK_ISSUER="${CYBERARK_ISSUER:-$default_cyberark_issuer}"
+
+  read -rp "CyberArk Identity (Idira) audience [${default_cyberark_audience}]: " CYBERARK_AUDIENCE
+  CYBERARK_AUDIENCE="${CYBERARK_AUDIENCE:-$default_cyberark_audience}"
+
+  read -rp "CyberArk Identity (Idira) JWKS URI [${default_cyberark_jwks}]: " CYBERARK_JWKS_URI
+  CYBERARK_JWKS_URI="${CYBERARK_JWKS_URI:-$default_cyberark_jwks}"
+
+  read -rp "CyberArk Identity (Idira) chat client ID [${default_cyberark_client_id}]: " CYBERARK_USER_CLIENT_ID
+  CYBERARK_USER_CLIENT_ID="${CYBERARK_USER_CLIENT_ID:-$default_cyberark_client_id}"
+
+  read_masked "CyberArk Identity (Idira) chat client secret (leave blank to keep the existing one): "
+  CYBERARK_USER_CLIENT_SECRET="${MASKED_REPLY:-$existing_cyberark_secret}"
+else
+  echo "    Skipping Idira SSO setup — keeping existing values untouched."
+fi
 
 # NEXTAUTH_SECRET is a local signing key, not an external credential — generate one per app
 # instead of prompting, same as any other secret with no external system to match it against.
@@ -323,6 +408,12 @@ echo
 echo "==> Writing configuration"
 
 upsert_env_var "$ROOT/edge-proxy/.env" BASE_DOMAIN "$BASE_DOMAIN"
+upsert_env_var "$ROOT/edge-proxy/.env" CHAT_SUBDOMAIN "$CHAT_SUBDOMAIN"
+upsert_env_var "$ROOT/edge-proxy/.env" AGENT_SUBDOMAIN "$AGENT_SUBDOMAIN"
+upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_SUBDOMAIN "$DASHBOARD_SUBDOMAIN"
+upsert_env_var "$ROOT/edge-proxy/.env" MEMORY_SUBDOMAIN "$MEMORY_SUBDOMAIN"
+upsert_env_var "$ROOT/edge-proxy/.env" MEMAPI_SUBDOMAIN "$MEMAPI_SUBDOMAIN"
+upsert_env_var "$ROOT/edge-proxy/.env" RAGUI_SUBDOMAIN "$RAGUI_SUBDOMAIN"
 upsert_env_var "$ROOT/edge-proxy/.env" ACME_EMAIL "$ACME_EMAIL"
 upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_USER "$DASHBOARD_USER"
 upsert_env_var "$ROOT/edge-proxy/.env" DASHBOARD_PASSWORD_HASH "$(escape_dollars "$DASHBOARD_PASSWORD_HASH")"
@@ -344,7 +435,9 @@ upsert_env_var "$AGENT_ENV" NEXTAUTH_SECRET "$BACKEND_NEXTAUTH_SECRET"
 # different hostnames), so FastAPI's CORSMiddleware needs both explicitly allow-listed —
 # derived from BASE_DOMAIN so this doesn't silently break on the next domain change the way
 # the old hardcoded matthewwan.dev origins just did.
-upsert_env_var "$AGENT_ENV" CORS_ALLOWED_ORIGINS "https://chat.${BASE_DOMAIN},https://dashboard.${BASE_DOMAIN}"
+upsert_env_var "$AGENT_ENV" CORS_ALLOWED_ORIGINS "https://${CHAT_SUBDOMAIN}.${BASE_DOMAIN},https://${DASHBOARD_SUBDOMAIN}.${BASE_DOMAIN}"
+# agent-backend/docker-compose.yml's own dashboard service reads this to build its NEXTAUTH_URL.
+upsert_env_var "$AGENT_ENV" DASHBOARD_SUBDOMAIN "$DASHBOARD_SUBDOMAIN"
 
 # NEXT_PUBLIC_AGENT_BASE_URL must be a BARE host[:port], no scheme — client-chat-ui's own
 # src/lib/constants.ts prepends "wss://"/"https://" itself (AGENT_WSS_URL = `wss://${AGENT_BASE_URL}/ws`,
@@ -352,14 +445,16 @@ upsert_env_var "$AGENT_ENV" CORS_ALLOWED_ORIGINS "https://chat.${BASE_DOMAIN},ht
 # double-scheme string that the WHATWG URL parser mangles into "wss://https//agent.../ws"
 # (the first "https" becomes an empty-port host, swallowing a "/" from "//" into the path) —
 # a real bug this project hit, not a hypothetical one. Keep this scheme-less.
-upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_AGENT_BASE_URL "agent.${BASE_DOMAIN}"
-upsert_env_var "$CHAT_ENV" NEXTAUTH_URL "https://chat.${BASE_DOMAIN}"
+upsert_env_var "$CHAT_ENV" NEXT_PUBLIC_AGENT_BASE_URL "${AGENT_SUBDOMAIN}.${BASE_DOMAIN}"
+upsert_env_var "$CHAT_ENV" NEXTAUTH_URL "https://${CHAT_SUBDOMAIN}.${BASE_DOMAIN}"
 upsert_env_var "$CHAT_ENV" CYBERARK_ISSUER "$CYBERARK_ISSUER"
 upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_ID "$CYBERARK_USER_CLIENT_ID"
 upsert_env_var "$CHAT_ENV" CYBERARK_USER_CLIENT_SECRET "$(escape_dollars "$CYBERARK_USER_CLIENT_SECRET")"
 upsert_env_var "$CHAT_ENV" NEXTAUTH_SECRET "$CHAT_NEXTAUTH_SECRET"
 
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
+upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMORY_SUBDOMAIN "$MEMORY_SUBDOMAIN"
+upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMAPI_SUBDOMAIN "$MEMAPI_SUBDOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_GATEWAY_URL "$MEM0_GATEWAY_URL"
 
 chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
@@ -395,9 +490,8 @@ chmod 700 "$MCP_SECRETS_DIR"
 if [ -f "$MCP_SECRETS_DIR/memory.env" ]; then
   echo "   ~/mcp-secrets/memory.env already exists — leaving it as-is."
 else
-  read -rsp "AI Gateway API key for mem0 memory (leave blank to reuse the Portkey API key above): " memory_gateway_key_input
-  echo
-  memory_gateway_key="${memory_gateway_key_input:-$PORTKEY_API_KEY}"
+  read_masked "AI Gateway API key for mem0 memory (leave blank to reuse the Portkey API key above): "
+  memory_gateway_key="${MASKED_REPLY:-$PORTKEY_API_KEY}"
   if [ -n "$memory_gateway_key" ]; then
     ( umask 077
       printf '%s\n' \
@@ -488,6 +582,34 @@ sudo systemctl enable --now agent-all-in-one-docker-user.service >/dev/null
 
 echo "   ufw: 22, 80, 443 allowed; port 8080 restricted to ${GATEWAY_SOURCE_IP} via DOCKER-USER (persisted by systemd, not iptables-persistent)"
 
+ALL_SUBDOMAINS=("$CHAT_SUBDOMAIN" "$AGENT_SUBDOMAIN" "$DASHBOARD_SUBDOMAIN" "$MEMORY_SUBDOMAIN" "$MEMAPI_SUBDOMAIN" "$RAGUI_SUBDOMAIN")
+
+# Real Let's Encrypt (HTTP-01) can only ever succeed once DNS actually points each hostname at
+# this server's PUBLIC IP — not the private/LAN IP install.sh itself runs on if this box sits
+# behind NAT (a cloud instance's own `ip route get` src IP is very often its private IP, not
+# its public/elastic one). This is best-effort and non-blocking: DNS propagation lag is normal,
+# so a mismatch here is a heads-up, not a hard failure — `getent` needs no extra package,
+# unlike `dig`, which isn't installed by default on a minimal Ubuntu image.
+if [ -z "$CADDY_LOCAL_CERTS" ]; then
+  echo
+  echo "==> Checking DNS before requesting real certificates"
+  PUBLIC_IP="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+  if [ -n "$PUBLIC_IP" ]; then
+    echo "   this server's public IP looks like: $PUBLIC_IP"
+    for sub in "${ALL_SUBDOMAINS[@]}"; do
+      fqdn="${sub}.${BASE_DOMAIN}"
+      resolved="$(getent ahostsv4 "$fqdn" 2>/dev/null | awk '{print $1; exit}')"
+      if [ "$resolved" != "$PUBLIC_IP" ]; then
+        echo "   WARNING: ${fqdn} resolves to '${resolved:-nothing}', not ${PUBLIC_IP} yet." >&2
+        echo "            Point its DNS A record here before/while Caddy requests a cert — it" >&2
+        echo "            will keep retrying ACME in the background either way." >&2
+      fi
+    done
+  else
+    echo "   couldn't determine this server's public IP (offline, or api.ipify.org unreachable) — skipping"
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Bring everything up
 # ---------------------------------------------------------------------------
@@ -507,6 +629,31 @@ echo
 echo "==> Starting edge-proxy"
 ( cd "$ROOT/edge-proxy" && docker compose up -d --build )
 
+# Confirm Caddy actually obtained real certs instead of leaving the user to guess — ACME's
+# HTTP-01 round trip isn't instant, so poll for a couple of minutes before calling it failed.
+# Skipped entirely in local_certs mode: self-signed certs don't involve ACME at all, and curl
+# would need -k anyway, which is already covered by the message below.
+if [ -z "$CADDY_LOCAL_CERTS" ]; then
+  echo
+  echo "==> Verifying TLS certificates (may take up to ~2 minutes on first issuance)"
+  for sub in "${ALL_SUBDOMAINS[@]}"; do
+    fqdn="${sub}.${BASE_DOMAIN}"
+    ok=0
+    for _ in $(seq 1 24); do
+      if curl -fsS --max-time 5 "https://${fqdn}" -o /dev/null 2>/dev/null; then ok=1; break; fi
+      sleep 5
+    done
+    if [ "$ok" -eq 1 ]; then
+      echo "   OK: https://${fqdn}"
+    else
+      echo "   FAILED: https://${fqdn} — check: does its DNS A record point here yet? are ports" >&2
+      echo "            80/443 reachable from the public internet (cloud provider firewall/" >&2
+      echo "            security group, not just ufw)? Full error:" >&2
+      echo "            (cd edge-proxy && docker compose logs edge-proxy --tail 50)" >&2
+    fi
+  done
+fi
+
 # ---------------------------------------------------------------------------
 # 7. Summary
 # ---------------------------------------------------------------------------
@@ -519,12 +666,9 @@ if [ -n "$CADDY_LOCAL_CERTS" ]; then
 else
   echo "Point these DNS A records at this server's public IP (Caddy can't issue certs until they resolve):"
 fi
-echo "   chat.${BASE_DOMAIN}"
-echo "   agent.${BASE_DOMAIN}"
-echo "   dashboard.${BASE_DOMAIN}"
-echo "   memory.${BASE_DOMAIN}"
-echo "   memapi.${BASE_DOMAIN}"
-echo "   ragui.${BASE_DOMAIN}"
+for sub in "${ALL_SUBDOMAINS[@]}"; do
+  echo "   ${sub}.${BASE_DOMAIN}"
+done
 echo
 echo "mcp-hub's bearer-token proxy stays on http://<server-ip>:8080, reachable only from ${GATEWAY_SOURCE_IP}."
 echo

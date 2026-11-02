@@ -19,7 +19,7 @@
 # Switch back (re-run install.sh, answer the public-reachability prompt "yes") once this is
 # actually reachable from the public internet.
 
-chat.{$BASE_DOMAIN} {
+{$CHAT_SUBDOMAIN:chat}.{$BASE_DOMAIN} {
     log {
         output stdout
     }
@@ -31,14 +31,14 @@ chat.{$BASE_DOMAIN} {
     }
 }
 
-agent.{$BASE_DOMAIN} {
+{$AGENT_SUBDOMAIN:agent}.{$BASE_DOMAIN} {
     log {
         output stdout
     }
     reverse_proxy 127.0.0.1:8000
 }
 
-dashboard.{$BASE_DOMAIN} {
+{$DASHBOARD_SUBDOMAIN:dashboard}.{$BASE_DOMAIN} {
     log {
         output stdout
     }
@@ -48,21 +48,21 @@ dashboard.{$BASE_DOMAIN} {
     reverse_proxy 127.0.0.1:3001
 }
 
-memory.{$BASE_DOMAIN} {
+{$MEMORY_SUBDOMAIN:memory}.{$BASE_DOMAIN} {
     log {
         output stdout
     }
     reverse_proxy 127.0.0.1:8082
 }
 
-memapi.{$BASE_DOMAIN} {
+{$MEMAPI_SUBDOMAIN:memapi}.{$BASE_DOMAIN} {
     log {
         output stdout
     }
     reverse_proxy 127.0.0.1:8083
 }
 
-ragui.{$BASE_DOMAIN} {
+{$RAGUI_SUBDOMAIN:ragui}.{$BASE_DOMAIN} {
     log {
         output stdout
     }

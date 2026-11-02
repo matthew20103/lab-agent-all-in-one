@@ -335,12 +335,12 @@ flowchart TB
         MemApi["memory-api\n127.0.0.1:8083"]
         PG["postgres demo stack\n(internal)"]
 
-        Edge -->|chat.BASE_DOMAIN| Chat
-        Edge -->|agent.BASE_DOMAIN, incl /ws| Agent
-        Edge -->|dashboard.BASE_DOMAIN basicauth| Dash
-        Edge -->|memory.BASE_DOMAIN| MemDash
-        Edge -->|memapi.BASE_DOMAIN| MemApi
-        Edge -->|ragui.BASE_DOMAIN basicauth| ChromaUi
+        Edge -->|chat.BASE_DOMAIN *| Chat
+        Edge -->|agent.BASE_DOMAIN *, incl /ws| Agent
+        Edge -->|dashboard.BASE_DOMAIN * basicauth| Dash
+        Edge -->|memory.BASE_DOMAIN *| MemDash
+        Edge -->|memapi.BASE_DOMAIN *| MemApi
+        Edge -->|ragui.BASE_DOMAIN * basicauth| ChromaUi
         Agent --> Redis
         Dash --> Redis
         Dash -.->|docker network| Agent
@@ -360,6 +360,9 @@ flowchart TB
     Internet --> Edge
     Agent -->|LLM calls, always| Gateway
 ```
+
+> `*` marks the default subdomain prefix for each service — all six are editable at install
+> time (see 1.3), not fixed literals.
 
 > **Note (investigated, benign):** a request to `mcphub.<domain>` over plain HTTP gets a `308`
 > redirect to HTTPS, which can look like a real, working site exists for it. It doesn't.
@@ -394,16 +397,18 @@ is what lets this all coexist safely on one box.
 
 ### 1.3 Domain & TLS
 
-Public hostnames (all under one `BASE_DOMAIN`, set once at install time):
+Public hostnames, each `{SUBDOMAIN}.{BASE_DOMAIN}` — `BASE_DOMAIN` is set once at install
+time; each subdomain prefix defaults to the name below but is also prompted for and editable
+at install time (e.g. to avoid a naming clash, or match an existing convention):
 
-| Hostname | Routes to | Notes |
-|---|---|---|
-| `chat.{BASE_DOMAIN}` | `client-chat-ui` | |
-| `agent.{BASE_DOMAIN}` | `agent-backend` | standard 443, includes `/ws` |
-| `dashboard.{BASE_DOMAIN}` | `agent-dashboard` | Caddy `basicauth` |
-| `memory.{BASE_DOMAIN}` | `memory-dashboard` | public per requirement |
-| `memapi.{BASE_DOMAIN}` | `memory-api` | the dashboard's browser JS calls this directly by hostname |
-| `ragui.{BASE_DOMAIN}` | `chroma-ui` | Caddy `basicauth`, separate credential from the admin dashboard's |
+| Env var | Default prefix | Routes to | Notes |
+|---|---|---|---|
+| `CHAT_SUBDOMAIN` | `chat` | `client-chat-ui` | |
+| `AGENT_SUBDOMAIN` | `agent` | `agent-backend` | standard 443, includes `/ws` |
+| `DASHBOARD_SUBDOMAIN` | `dashboard` | `agent-dashboard` | Caddy `basicauth` |
+| `MEMORY_SUBDOMAIN` | `memory` | `memory-dashboard` | public per requirement |
+| `MEMAPI_SUBDOMAIN` | `memapi` | `memory-api` | the dashboard's browser JS calls this directly by hostname |
+| `RAGUI_SUBDOMAIN` | `ragui` | `chroma-ui` | Caddy `basicauth`, separate credential from the admin dashboard's |
 
 Caddy uses its standard automatic HTTPS (HTTP-01) by default — each hostname's DNS A record
 must point at the server's **public** IP with ports 80/443 reachable from the internet. For a
@@ -412,6 +417,16 @@ reachable?" and, if not, sets `CADDY_LOCAL_CERTS=local_certs`, switching every s
 own internal CA — works immediately with no public reachability, but browsers show a
 "not trusted" warning and `curl` needs `-k`/`--insecure`. Re-run `install.sh` and answer "yes"
 once the server is actually public-reachable to switch back to real Let's Encrypt certs.
+
+When going the real-cert route, `install.sh` also checks each hostname's DNS against this
+server's actual public IP (via a public IP-echo lookup, since a cloud instance's own LAN-facing
+IP is often *not* its public one) right before starting the stack, and polls each hostname over
+HTTPS for up to ~2 minutes after `edge-proxy` starts to confirm Caddy actually got a real
+certificate — reporting `OK`/`FAILED` per hostname instead of leaving you to guess whether ACME
+silently succeeded or is stuck retrying. A `FAILED` almost always means DNS hasn't propagated
+yet or ports 80/443 aren't reachable from the public internet (check your cloud provider's
+firewall/security group, not just `ufw` — Docker-published ports plus a permissive `ufw` won't
+help if the cloud network layer itself is blocking the port).
 
 `install.sh` rejects a `BASE_DOMAIN` ending in a reserved/special-use TLD
 (`.local`, `.test`, `.example`, `.invalid`, `.localhost`, `.internal`) at prompt time — these
@@ -733,16 +748,17 @@ action — restrict to `search` (+ optionally `extract`) and instruct agents to 
 
 **Chroma (knowledge base)** — read-only via MCP (`chroma_list_collections`, `chroma_query`);
 ingestion and deletion only happen through the separate `chroma-ui` web app
-(`ragui.{BASE_DOMAIN}`), so an agent can search the knowledge base but never corrupt or wipe
-it. No shared Elasticsearch/MySQL/MinIO, no AI Gateway call needed for retrieval (Chroma's
-default embedding function runs locally).
+(`{RAGUI_SUBDOMAIN}.{BASE_DOMAIN}`, `ragui` by default — configurable at install time, see
+1.3), so an agent can search the knowledge base but never corrupt or wipe it. No shared
+Elasticsearch/MySQL/MinIO, no AI Gateway call needed for retrieval (Chroma's default embedding
+function runs locally).
 
 **Memory (mem0, long-term per-user memory)** — tools: `memory_search`, `memory_add`,
 `memory_list`, `memory_delete`, all keyed by `user_id` (must be an email, case-insensitive).
 The agent backend inserts the *verified* email from the login session into the system prompt
 and instructs the model to always use it as `user_id` — never take this from anything the user
-types. Dashboard at `memory.{BASE_DOMAIN}` lets an admin browse/delete memories per user
-(e.g. for a "right to be forgotten" request).
+types. Dashboard at `{MEMORY_SUBDOMAIN}.{BASE_DOMAIN}` (`memory` by default) lets an admin
+browse/delete memories per user (e.g. for a "right to be forgotten" request).
 
 **Postgres (demo database)** — synthetic sensitive data (fake customers with SSNs/card numbers,
 employees with salaries/bank accounts) for guardrail demos. Safety comes from **database
@@ -815,6 +831,12 @@ authorization endpoint (discovered from `{CYBERARK_ISSUER}/.well-known/openid-co
 scope `openid email profile offline_access`) → user authenticates → NextAuth exchanges the code
 for tokens, storing `accessToken`/`accessTokenExpires`/`refreshToken` in the session. Session
 cookie lasts 365 days, matching Idira's refresh-token lifetime.
+
+Setting this up: `install.sh` prompts for Idira SSO behind its own "Configure Idira SSO now?
+[y/N]" gate (skippable if you're only using Basic Auth), and prints the exact redirect URI
+(`https://{CHAT_SUBDOMAIN}.{BASE_DOMAIN}/api/auth/callback/cyberark`) to register in your
+CyberArk Identity admin console before asking for the five values above — register that OIDC
+web app first, then answer "y" and fill them in from that registration.
 
 **Sign-in (Basic Auth)**: username/password form → POSTs a `Basic` header to
 `/api/v1/auth/basic/verify` for validation at login time (not on the first chat message) → on
