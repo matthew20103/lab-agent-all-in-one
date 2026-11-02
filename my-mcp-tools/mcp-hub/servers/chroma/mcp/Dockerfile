@@ -12,6 +12,12 @@ ENV PYTHONUNBUFFERED=1
 # writable HOME instead — matches chroma-ui's own HOME (see that Dockerfile) so the shared
 # chroma_onnx_cache volume (compose.yaml) actually lands in the same place for both.
 ENV HOME=/home/chroma
-RUN mkdir -p "$HOME" && chmod 777 "$HOME"
+# Pre-create the FULL path the embedding function actually writes into (not just $HOME) —
+# confirmed live that chmod 777 on $HOME alone wasn't enough: whichever of chroma-ui/chroma-mcp
+# populates the shared chroma_onnx_cache volume first does so as its own container's default
+# user, and the resulting .cache subdirectory inherited THAT user's restrictive default perms
+# ("Permission denied" on .cache/chroma/onnx_models specifically, one level deeper than $HOME
+# itself). -R makes every level nobody might need to create a new entry under actually writable.
+RUN mkdir -p "$HOME/.cache/chroma" && chmod -R 777 "$HOME"
 USER nobody
 CMD ["python", "server.py"]
