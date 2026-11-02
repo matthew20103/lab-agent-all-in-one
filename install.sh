@@ -700,6 +700,14 @@ done
 echo
 echo "mcp-hub's bearer-token proxy stays on http://<server-ip>:8080, reachable only from ${GATEWAY_SOURCE_IP}."
 echo
+echo "MCP server slugs available to add in the dashboard's MCP Servers tab (must match exactly,"
+echo "case-sensitive — these come straight from mcp-hub's own compose.yaml, so this list always"
+echo "reflects whatever's actually registered there):"
+grep -oE 'servers/[a-zA-Z0-9_-]+/compose\.yaml' "$ROOT/my-mcp-tools/mcp-hub/compose.yaml" \
+  | sed -E 's#servers/([a-zA-Z0-9_-]+)/compose\.yaml#   \1#'
+echo "Each one's bearer token lives in ~/mcp-secrets/hub.env (MCP_TOKEN_<NAME>, auto-generated —"
+echo "see LAB_GUIDE.md Appendix 3 for the full per-tool reference)."
+echo
 if [ "$NEED_RELOGIN" -eq 1 ]; then
   echo "Reminder: log out and back in for your 'docker' group membership to take effect."
 fi
