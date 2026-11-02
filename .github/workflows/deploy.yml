@@ -81,6 +81,7 @@ jobs:
             --exclude '*.env' \
             --exclude '.install-state' \
             --exclude 'my-mcp-tools/mcp-hub/proxy/certs/' \
+            --exclude 'edge-proxy/tls-override.conf' \
             --exclude '**/node_modules/' \
             ./ "$DEPLOY_DIR/"
 

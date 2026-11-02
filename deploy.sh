@@ -83,7 +83,14 @@ echo "==> client-chat-ui"
 
 echo
 echo "==> edge-proxy"
-( cd "$ROOT/edge-proxy" && docker compose up -d --build --remove-orphans )
+# --force-recreate matters here specifically: Docker bakes a bind mount's file-vs-directory
+# type into the container's rootfs at CREATE time, not at every start. A server whose edge-proxy
+# container was ever created while tls-override.conf was wrongly a directory (the bug above)
+# keeps failing to start even after the file is fixed on disk, until the container itself is
+# recreated — a plain `up -d` reuses the existing container if its config hash is unchanged and
+# never re-evaluates the mount type. obtain-manual-tls-cert.sh already force-recreates for the
+# same reason; mirror that here so a CI redeploy self-heals a server stuck in that state too.
+( cd "$ROOT/edge-proxy" && docker compose up -d --build --force-recreate --remove-orphans )
 
 echo
 echo "==> status"
