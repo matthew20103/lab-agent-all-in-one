@@ -330,6 +330,18 @@ default_mem0_embed_model="$(existing MEM0_DEFAULT_EMBEDDER_MODEL "$ROOT/my-mcp-t
 read -rp "Default EMBEDDING model for mem0 memory (must be embedding-capable, not a chat model) [${default_mem0_embed_model}]: " MEM0_DEFAULT_EMBEDDER_MODEL
 MEM0_DEFAULT_EMBEDDER_MODEL="${MEM0_DEFAULT_EMBEDDER_MODEL:-$default_mem0_embed_model}"
 
+# Must match the embedding model above's ACTUAL output size, not a style preference — mem0's
+# Postgres vector column is created with whatever size this says, and every insert afterward
+# is rejected outright if the embedder's real output doesn't match ("expected 1536
+# dimensions, not 768"), confirmed live with Vertex AI's text-embedding-005 (768) against the
+# OpenAI-standard default (1536). Common sizes: 1536 (OpenAI text-embedding-3-small/ada-002),
+# 3072 (text-embedding-3-large), 768 (Vertex AI text-embedding-005), 1024 (Cohere
+# embed-english-v3). Check your own embedding model's documented output size if unsure.
+default_mem0_embed_dims="$(existing MEM0_EMBEDDING_DIMS "$ROOT/my-mcp-tools/mcp-hub/.env")"
+default_mem0_embed_dims="${default_mem0_embed_dims:-1536}"
+read -rp "Embedding dimension size for mem0 memory (must match the embedding model's actual output size) [${default_mem0_embed_dims}]: " MEM0_EMBEDDING_DIMS
+MEM0_EMBEDDING_DIMS="${MEM0_EMBEDDING_DIMS:-$default_mem0_embed_dims}"
+
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
 existing_basic_auth="$(unescape_dollars "$(existing BASIC_AUTH_USERS "$AGENT_ENV")")"
@@ -485,6 +497,7 @@ upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMAPI_SUBDOMAIN "$MEMAPI_SUBDO
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_GATEWAY_URL "$MEM0_GATEWAY_URL"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_LLM_MODEL "$MEM0_DEFAULT_LLM_MODEL"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_EMBEDDER_MODEL "$MEM0_DEFAULT_EMBEDDER_MODEL"
+upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_EMBEDDING_DIMS "$MEM0_EMBEDDING_DIMS"
 
 chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
 
