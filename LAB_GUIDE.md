@@ -761,27 +761,35 @@ and instructs the model to always use it as `user_id` — never take this from a
 types. Dashboard at `{MEMORY_SUBDOMAIN}.{BASE_DOMAIN}` (`memory` by default) lets an admin
 browse/delete memories per user (e.g. for a "right to be forgotten" request).
 
-**Prefer `MEM0_DEFAULT_LLM_MODEL`/`MEM0_DEFAULT_EMBEDDER_MODEL`/`MEM0_EMBEDDING_DIMS`
-(install.sh) over the dashboard's own Configure page.** Both ultimately feed the same
-underlying config, but the dashboard's path persists through a DB-stored override
-(`SELECT key, value FROM settings;` inside `memory-postgres`'s `postgres` database, key
-`config_overrides`) that proved unreliable in practice — confirmed live, it did not
-consistently take effect even when correctly stored. The install.sh/env-var path has been
-solid throughout. If you've ever used the dashboard's Configure page, clear any leftover
-override once you've set things via install.sh instead:
-`DELETE FROM settings WHERE key = 'config_overrides';` (run inside `memory-postgres`'s
-`postgres` database, then `docker compose up -d --force-recreate memory-api`).
+**Configure the LLM and embedding model via the dashboard's own Configure page** at
+`{MEMORY_SUBDOMAIN}.{BASE_DOMAIN}` — `install.sh` no longer prompts for these (it did at one
+point; removed by request once the real underlying bugs below were fixed and the dashboard
+path was confirmed to work reliably on its own). The dashboard's settings persist through a
+DB-stored override (`SELECT key, value FROM settings;` inside `memory-postgres`'s `postgres`
+database, key `config_overrides`) — if you ever see a model/embedder change not taking visible
+effect, that table is where to look, and `DELETE FROM settings WHERE key = 'config_overrides';`
+followed by `docker compose up -d --force-recreate memory-api` clears it back to defaults.
 
-**Dimension mismatches** (`psycopg.errors.DataException: expected 1536 dimensions, not N`):
-`MEM0_EMBEDDING_DIMS` must match your embedder's *actual* output size (1536 for OpenAI
-text-embedding-3-small, 768 for Vertex AI's text-embedding-005, etc.) — mem0 otherwise
-silently assumes OpenAI's 1536 regardless of the real embedder. This only affects a *new*
-table — if one already exists with the wrong dimension, changing the setting alone does
-nothing; you must also drop it:
+**One setting has NO dashboard field at all: the embedding dimension.** mem0's Configure UI
+only exposes LLM/embedder *model* selection, not the vector store's dimension size, so a
+non-default embedding model needs this fixed by hand — either re-add a `MEM0_EMBEDDING_DIMS`
+line to `my-mcp-tools/mcp-hub/.env` yourself (`install.sh` won't write it, but the container
+still reads it if present), or insert it directly as a DB override:
+```sql
+INSERT INTO settings (key, value)
+VALUES ('config_overrides', '{"vector_store": {"config": {"embedding_model_dims": 768}}}')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+```
+(run inside `memory-postgres`'s `postgres` database, 768 being Vertex AI's text-embedding-005
+as an example — use your actual embedder's real output size). Then **also drop the `memories`
+table** so it gets recreated with the new dimension — changing the setting alone does nothing
+to an existing table's column type:
 `docker exec memory-postgres psql -U postgres -d postgres -c "DROP TABLE IF EXISTS memories;"`
 (confirmed live: this table lives in the `postgres` database, **not** `mem0_app` — `mem0_app`
 only holds the app's own relational metadata — a mismatch that's easy to miss while
-troubleshooting), then recreate `memory-api`.
+troubleshooting), then recreate `memory-api`. Symptom if you skip this:
+`psycopg.errors.DataException: expected 1536 dimensions, not N` (1536 is OpenAI's standard,
+and mem0 silently assumes it regardless of the real embedder unless told otherwise).
 
 **If mem0 rejects an add with an error naming a DIFFERENT model than anything you
 configured** (confirmed live: entering provider-routed model strings like

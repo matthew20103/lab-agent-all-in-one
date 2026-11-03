@@ -299,48 +299,23 @@ PORTKEY_MCP_GATEWAY_URL="${PORTKEY_MCP_GATEWAY_URL:-$default_portkey_mcp_gw}"
 default_portkey_slugs="$(existing PORTKEY_MCP_SERVER_SLUGS "$AGENT_ENV")"
 read -rp "Prisma AIRS AI Gateway MCP server slugs, comma-separated, optional [${default_portkey_slugs}]: " PORTKEY_MCP_SERVER_SLUGS
 
-# mem0's own OpenAI-compatible REST client needs the gateway's plain LLM API endpoint — a
-# different host:port/path than PORTKEY_GATEWAY_URL above on SOME gateway setups, so it's kept
-# as its own prompt rather than silently reused — but on the common setup where it's the exact
-# same URL, default to what was just typed above so Enter alone repeats it instead of needing
-# the whole URL retyped.
+# mem0's LLM model, embedding model, and embedding dimension are NOT prompted for here by
+# design — configure them via the mem0 dashboard's own Configure page after the stack is up
+# (https://{MEMORY_SUBDOMAIN}.{BASE_DOMAIN}), not during install.sh. The one exception is the
+# gateway base URL just below, which has no dashboard field and no safe fallback (mem0 would
+# otherwise try to hit the real OpenAI API using a gateway-scoped key, which can't work at all)
+# — so that one still needs a real value, but gets it silently from PORTKEY_GATEWAY_URL above
+# rather than asking again, since it's virtually always the same URL.
+#
+# Known tradeoff accepted here: MEM0_EMBEDDING_DIMS has no dashboard equivalent at all (mem0's
+# Configure UI only exposes LLM/embedder model selection, not the vector store's dimension
+# size), so an embedding model whose output size isn't 1536 (OpenAI's standard — e.g. Vertex
+# AI's text-embedding-005 at 768) will need its dimension fixed by hand after the fact
+# (directly in mem0's Postgres `settings` table's `config_overrides`, or by re-adding a
+# MEM0_EMBEDDING_DIMS line to this file's own .env), the same way this exact issue was first
+# diagnosed and fixed — see LAB_GUIDE.md Appendix 3.8 for the full troubleshooting writeup.
 default_mem0_gw="$(existing MEM0_GATEWAY_URL "$ROOT/my-mcp-tools/mcp-hub/.env")"
-default_mem0_gw="${default_mem0_gw:-$PORTKEY_GATEWAY_URL}"
-read -rp "AI Gateway's LLM API URL for mem0 memory (usually same as the Prisma AIRS AI Gateway URL above) [${default_mem0_gw}]: " MEM0_GATEWAY_URL
-MEM0_GATEWAY_URL="${MEM0_GATEWAY_URL:-$default_mem0_gw}"
-
-# The exact model string your own gateway expects for this — NOT something that can have a
-# working default here, since it depends entirely on how providers/virtual keys are named in
-# YOUR gateway's own console. A prior hardcoded value here ("@google-vertex-sep/gemini-3.6-flash")
-# only worked because that provider alias happened to exist on the original deployment's own
-# gateway instance — on any other gateway it's an unrecognized provider, and mem0's calls get
-# rejected outright ("Provider rejected the request as malformed"), confirmed live.
-default_mem0_model="$(existing MEM0_DEFAULT_LLM_MODEL "$ROOT/my-mcp-tools/mcp-hub/.env")"
-read -rp "Default LLM model for mem0 memory, e.g. gpt-4o-mini or @<your-provider-alias>/<model> if your gateway uses provider routing [${default_mem0_model}]: " MEM0_DEFAULT_LLM_MODEL
-MEM0_DEFAULT_LLM_MODEL="${MEM0_DEFAULT_LLM_MODEL:-$default_mem0_model}"
-
-# A SEPARATE model from the one above: mem0 needs a distinct embedding-capable model for
-# generating vectors, not a chat/generative one — confirmed live that leaving this unset means
-# mem0 reuses MEM0_DEFAULT_LLM_MODEL for embedding calls too, which fails outright
-# ("is not supported in the embedContent API") if that's a chat-only model like a Gemini Pro
-# variant. Give it a real embedding model from your own gateway (e.g. an OpenAI
-# text-embedding-* model, or your gateway's Vertex text-embedding alias) — NOT the same value
-# as above unless your gateway specifically has one model that does both.
-default_mem0_embed_model="$(existing MEM0_DEFAULT_EMBEDDER_MODEL "$ROOT/my-mcp-tools/mcp-hub/.env")"
-read -rp "Default EMBEDDING model for mem0 memory (must be embedding-capable, not a chat model) [${default_mem0_embed_model}]: " MEM0_DEFAULT_EMBEDDER_MODEL
-MEM0_DEFAULT_EMBEDDER_MODEL="${MEM0_DEFAULT_EMBEDDER_MODEL:-$default_mem0_embed_model}"
-
-# Must match the embedding model above's ACTUAL output size, not a style preference — mem0's
-# Postgres vector column is created with whatever size this says, and every insert afterward
-# is rejected outright if the embedder's real output doesn't match ("expected 1536
-# dimensions, not 768"), confirmed live with Vertex AI's text-embedding-005 (768) against the
-# OpenAI-standard default (1536). Common sizes: 1536 (OpenAI text-embedding-3-small/ada-002),
-# 3072 (text-embedding-3-large), 768 (Vertex AI text-embedding-005), 1024 (Cohere
-# embed-english-v3). Check your own embedding model's documented output size if unsure.
-default_mem0_embed_dims="$(existing MEM0_EMBEDDING_DIMS "$ROOT/my-mcp-tools/mcp-hub/.env")"
-default_mem0_embed_dims="${default_mem0_embed_dims:-1536}"
-read -rp "Embedding dimension size for mem0 memory (must match the embedding model's actual output size) [${default_mem0_embed_dims}]: " MEM0_EMBEDDING_DIMS
-MEM0_EMBEDDING_DIMS="${MEM0_EMBEDDING_DIMS:-$default_mem0_embed_dims}"
+MEM0_GATEWAY_URL="${default_mem0_gw:-$PORTKEY_GATEWAY_URL}"
 
 PORTKEY_MCP_SERVER_SLUGS="${PORTKEY_MCP_SERVER_SLUGS:-$default_portkey_slugs}"
 
@@ -494,10 +469,12 @@ upsert_env_var "$CHAT_ENV" NEXTAUTH_SECRET "$CHAT_NEXTAUTH_SECRET"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" BASE_DOMAIN "$BASE_DOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMORY_SUBDOMAIN "$MEMORY_SUBDOMAIN"
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEMAPI_SUBDOMAIN "$MEMAPI_SUBDOMAIN"
+# MEM0_DEFAULT_LLM_MODEL/MEM0_DEFAULT_EMBEDDER_MODEL/MEM0_EMBEDDING_DIMS are deliberately NOT
+# written here anymore — install.sh no longer prompts for them (see the comment above where
+# MEM0_GATEWAY_URL is set). Existing values from before this change are left untouched if
+# present; new installs leave them unset, relying on mem0's own built-in defaults until
+# configured via its dashboard (or, for EMBEDDING_DIMS only, by hand — see that same comment).
 upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_GATEWAY_URL "$MEM0_GATEWAY_URL"
-upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_LLM_MODEL "$MEM0_DEFAULT_LLM_MODEL"
-upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_DEFAULT_EMBEDDER_MODEL "$MEM0_DEFAULT_EMBEDDER_MODEL"
-upsert_env_var "$ROOT/my-mcp-tools/mcp-hub/.env" MEM0_EMBEDDING_DIMS "$MEM0_EMBEDDING_DIMS"
 
 chmod 600 "$ROOT/edge-proxy/.env" "$AGENT_ENV" "$CHAT_ENV" "$ROOT/my-mcp-tools/mcp-hub/.env"
 
@@ -505,12 +482,12 @@ echo
 echo "==> Checking for still-empty required values"
 # CyberArk/Idira fields are intentionally excluded here — they're optional (Basic Auth works
 # standalone with zero Idira config; see the "Configure Idira SSO now?" prompt above), so an
-# empty value there is a deliberate choice, not something to warn about.
+# empty value there is a deliberate choice, not something to warn about. mem0's LLM/embedder
+# model fields are excluded for the same reason — no longer collected here at all, configured
+# via mem0's own dashboard instead (see the comment where MEM0_GATEWAY_URL is set above).
 for pair in \
   "PORTKEY_API_KEY:$PORTKEY_API_KEY" \
   "MEM0_GATEWAY_URL:$MEM0_GATEWAY_URL" \
-  "MEM0_DEFAULT_LLM_MODEL:$MEM0_DEFAULT_LLM_MODEL" \
-  "MEM0_DEFAULT_EMBEDDER_MODEL:$MEM0_DEFAULT_EMBEDDER_MODEL" \
 ; do
   name="${pair%%:*}"
   val="${pair#*:}"
