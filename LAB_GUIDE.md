@@ -55,7 +55,15 @@ from Redis on every request.
 
 ### b) Clone the required GitHub repo to local machine (Ubuntu server)
 
-On your Ubuntu server:
+On a fresh Ubuntu server, update the OS and install Git first — neither is guaranteed to be
+present on a minimal/cloud image:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git
+```
+
+Then clone the repo:
 
 ```bash
 git clone https://github.com/matthew20103/lab-agent-all-in-one.git agent-all-in-one
