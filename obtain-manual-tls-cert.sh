@@ -23,6 +23,26 @@ if [ "$(id -u)" -eq 0 ]; then
   exit 1
 fi
 
+# This script calls plain `docker compose` (no sudo) below. If install.sh's `usermod -aG docker`
+# ran in a different session than this one (e.g. this is the first script run after install.sh
+# finished, without logging out and back in first), this shell won't have the docker group active
+# yet even though the user is listed in it — same gap install.sh works around for itself.
+if ! docker info >/dev/null 2>&1; then
+  if [ "${AIAO_REEXEC_DOCKER_GROUP:-0}" = "1" ]; then
+    echo "ERROR: still can't talk to Docker after relaunching via 'sg docker'." >&2
+    echo "Log out and SSH back in (a fresh session, not just a new tab), then re-run this script." >&2
+    exit 1
+  fi
+  if ! command -v sg >/dev/null 2>&1; then
+    echo "ERROR: can't talk to Docker (permission denied), and 'sg' isn't available to work around it." >&2
+    echo "Log out and SSH back in, then re-run this script." >&2
+    exit 1
+  fi
+  echo "==> docker group membership isn't active in this shell yet — relaunching via 'sg docker' (no logout needed)"
+  export AIAO_REEXEC_DOCKER_GROUP=1
+  exec sg docker -c "$(printf '%q ' "$0" "$@")"
+fi
+
 cd "$(dirname "${BASH_SOURCE[0]}")"
 ROOT="$(pwd)"
 EDGE_ENV="$ROOT/edge-proxy/.env"
