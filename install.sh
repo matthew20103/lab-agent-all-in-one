@@ -338,37 +338,37 @@ CYBERARK_USER_CLIENT_ID="$default_cyberark_client_id"
 CYBERARK_USER_CLIENT_SECRET="$existing_cyberark_secret"
 
 echo
-echo "==> Idira (CyberArk Identity) SSO — optional"
+echo "==> Idira SSO — optional"
 echo "    This lab's chat login works two ways: Basic Auth (BASIC_AUTH_USERS, above) always"
-echo "    works with no setup, OR \"Sign in with Idira\" OAuth/OIDC, which needs a CyberArk"
-echo "    Identity application registered in your own tenant. If you're only using Basic Auth"
-echo "    for now, answer 'n' below and skip straight past this — you can always re-run"
-echo "    install.sh later once Idira is set up."
-echo "    If you ARE configuring Idira: in your CyberArk Identity admin console, register (or"
-echo "    find) an OIDC web app for this chat UI with redirect URI:"
+echo "    works with no setup, OR \"Sign in with Idira\" OAuth/OIDC, which needs an Idira"
+echo "    application registered in your own tenant. If you're only using Basic Auth for now,"
+echo "    answer 'n' below and skip straight past this — you can always re-run install.sh"
+echo "    later once Idira is set up."
+echo "    If you ARE configuring Idira: in your Idira admin console, register (or find) an"
+echo "    OIDC web app for this chat UI with redirect URI:"
 echo "      https://${CHAT_SUBDOMAIN}.${BASE_DOMAIN}/api/auth/callback/cyberark"
-echo "    That registration gives you the Client ID/Secret below. Issuer is your tenant's OIDC"
-echo "    issuer URL (serves /.well-known/openid-configuration); Audience is the API resource"
-echo "    identifier Idira issues access tokens for; JWKS URI is usually that same issuer's"
-echo "    own /.well-known/openid-configuration \"jwks_uri\" value."
+echo "    That registration gives you everything below. Issuer and JWKS URI are both shown on"
+echo "    the app's registration page (issuer also serves /.well-known/openid-configuration,"
+echo "    which lists the jwks_uri if you need to double check). Audience isn't asked for"
+echo "    separately — Idira apps use the Client ID as the audience too."
 default_configure_idira="n"
 [ -n "$default_cyberark_issuer" ] && default_configure_idira="y"
 read -rp "    Configure Idira SSO now? [${default_configure_idira}]: " configure_idira_input
 configure_idira_input="${configure_idira_input:-$default_configure_idira}"
 if [[ "$configure_idira_input" =~ ^[Yy] ]]; then
-  read -rp "CyberArk Identity (Idira) issuer URL [${default_cyberark_issuer}]: " CYBERARK_ISSUER
+  read -rp "Idira issuer URL, e.g. https://<tenant>.id.cyberark.cloud/<app-name>/ [${default_cyberark_issuer}]: " CYBERARK_ISSUER
   CYBERARK_ISSUER="${CYBERARK_ISSUER:-$default_cyberark_issuer}"
 
-  read -rp "CyberArk Identity (Idira) audience [${default_cyberark_audience}]: " CYBERARK_AUDIENCE
-  CYBERARK_AUDIENCE="${CYBERARK_AUDIENCE:-$default_cyberark_audience}"
-
-  read -rp "CyberArk Identity (Idira) JWKS URI [${default_cyberark_jwks}]: " CYBERARK_JWKS_URI
+  read -rp "Idira JWKS URI, e.g. https://<tenant>.id.cyberark.cloud/OAuth2/Keys/<app-name> [${default_cyberark_jwks}]: " CYBERARK_JWKS_URI
   CYBERARK_JWKS_URI="${CYBERARK_JWKS_URI:-$default_cyberark_jwks}"
 
-  read -rp "CyberArk Identity (Idira) chat client ID [${default_cyberark_client_id}]: " CYBERARK_USER_CLIENT_ID
+  read -rp "Idira chat client ID (from your Idira app registration) [${default_cyberark_client_id}]: " CYBERARK_USER_CLIENT_ID
   CYBERARK_USER_CLIENT_ID="${CYBERARK_USER_CLIENT_ID:-$default_cyberark_client_id}"
+  # Confirmed: Idira issues tokens with aud == the app's own Client ID, so there's no separate
+  # "audience" concept to ask about — one less (easily-confused-with-client-ID) prompt.
+  CYBERARK_AUDIENCE="$CYBERARK_USER_CLIENT_ID"
 
-  read_masked "CyberArk Identity (Idira) chat client secret (leave blank to keep the existing one): "
+  read_masked "Idira chat client secret (leave blank to keep the existing one): "
   CYBERARK_USER_CLIENT_SECRET="${MASKED_REPLY:-$existing_cyberark_secret}"
 else
   echo "    Skipping Idira SSO setup — keeping existing values untouched."
