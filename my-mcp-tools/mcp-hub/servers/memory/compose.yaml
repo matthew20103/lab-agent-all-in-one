@@ -15,17 +15,20 @@
 # model for embedding calls too if this one is left unset, which fails outright ("is not
 # supported in the embedContent API") against a chat-only model, also confirmed live.
 #
-# MEM0_EMBEDDING_DIMS must match your embedder's ACTUAL output dimension (1536 for OpenAI
-# text-embedding-3-small, 768 for Vertex AI's text-embedding-005, etc.) — mem0's own
-# DEFAULT_CONFIG never sets this for the pgvector store, so PGVectorConfig's own hardcoded
-# default (1536, OpenAI's standard) wins regardless of what embedding model is actually
-# configured, and Postgres rejects any insert whose vector size doesn't match the column it
-# created the table with ("expected 1536 dimensions, not 768"), confirmed live. Patched into
-# main.py at build time below (DB-override persistence proved unreliable for this — the model
-# env vars above are solid, so this is wired the same way instead). If you ever change
-# MEM0_EMBEDDING_DIMS on a server that already has data, you must also drop the `memories`
-# table (or the whole memory_pgdata volume, in a lab/test context) so it gets recreated with
-# the new dimension — changing the setting alone does not alter an existing table's column type.
+# MEM0_EMBEDDING_DIMS (optional, defaults to 1536, OpenAI's standard) only matters as the
+# BOOT-TIME starting point, patched into main.py's DEFAULT_CONFIG at build time below — mem0's
+# own DEFAULT_CONFIG never sets this for the pgvector store otherwise, so PGVectorConfig's own
+# hardcoded default (1536) would silently win regardless of what embedding model is actually
+# configured. From then on, a SECOND patch below keeps it correct automatically: whenever the
+# dashboard's Configure page changes the embedder model, main.py probes the newly-selected
+# model for its REAL output size (an actual embedding call, not a hardcoded name->dims table —
+# works for any bundled provider/model) and, if it differs from what's on file, drops the
+# `memories` table (old vectors can't be reused across a model change anyway) so it gets
+# recreated with the right dimension on next use. This is what makes switching to a
+# non-1536-dim embedder (e.g. Vertex AI's 768-dim text-embedding-005) in the dashboard just
+# work, with no manual `MEM0_EMBEDDING_DIMS` edit or DROP TABLE needed — see LAB_GUIDE.md
+# Appendix 3.8 for the manual fallback if the auto-probe ever can't run (e.g. gateway briefly
+# unreachable at the moment you save the new model).
 
 services:
   memory-mcp:
@@ -45,6 +48,7 @@ services:
     build:
       context: https://github.com/mem0ai/mem0.git#v2.2.1:server
       dockerfile_inline: |
+        # syntax=docker/dockerfile:1.7
         FROM python:3.12-slim
         WORKDIR /app
         COPY requirements.txt .
@@ -54,6 +58,96 @@ services:
         # own DEFAULT_CONFIG never sets embedding_model_dims for pgvector, so it silently
         # assumes OpenAI's 1536 regardless of the actual configured embedder.
         RUN sed -i 's/"collection_name": POSTGRES_COLLECTION_NAME,/"collection_name": POSTGRES_COLLECTION_NAME, "embedding_model_dims": int(os.environ.get("MEM0_EMBEDDING_DIMS", "1536")),/' main.py
+        # Second patch: keep embedding_model_dims correct automatically from then on, not just
+        # at boot. Wraps POST /configure so that whenever the embedder config changes, it probes
+        # the newly-selected model for its real output size and recreates the `memories` table
+        # if that differs from what's on file. Fails the build loudly (anchor not found) if
+        # mem0's main.py ever changes shape upstream, rather than silently skipping the patch.
+        RUN <<'PYEOF'
+        #!/usr/bin/env python3
+        path = "main.py"
+        src = open(path).read()
+
+        anchor = '''@app.post("/configure", summary="Configure Mem0")
+        def set_config(config: Dict[str, Any], _auth=Depends(require_admin)):
+            """Set memory configuration. Requires admin role."""
+            _validate_bundled_providers(config)
+            update_config(config)
+            return {"message": "Configuration set successfully"}'''
+
+        replacement = '''def _recreate_vector_table() -> None:
+            """Drop the pgvector collection so Memory.from_config's CREATE TABLE IF NOT EXISTS
+            recreates it with the new embedding_model_dims -- changing that setting alone never
+            alters an existing column's declared vector size."""
+            import psycopg
+            from psycopg import sql
+
+            with psycopg.connect(
+                host=POSTGRES_HOST, port=int(POSTGRES_PORT), dbname=POSTGRES_DB,
+                user=POSTGRES_USER, password=POSTGRES_PASSWORD, autocommit=True,
+            ) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(POSTGRES_COLLECTION_NAME)))
+
+
+        def _autodetect_embedding_dims(config: Dict[str, Any]) -> Dict[str, Any]:
+            """Whenever the embedder config changes (e.g. switching models in the dashboard),
+            probe the REAL model for its output size instead of trusting whatever dimension is
+            already on file -- mem0's own DEFAULT_CONFIG only sets embedding_model_dims once, at
+            boot, and never revisits it, so a model switch silently breaks every future insert
+            ("expected N dimensions, not M") until the table is fixed by hand. Recreates the
+            vector table (old vectors can't be reused across a model change anyway) when the
+            probed size doesn't match what's on file."""
+            if "embedder" not in config:
+                return config
+
+            from copy import deepcopy
+            from server_state import _merge_config
+
+            current = get_current_config()
+            merged_embedder = _merge_config(current.get("embedder", {}), config["embedder"])
+
+            try:
+                from mem0.utils.factory import EmbedderFactory
+                probe = EmbedderFactory.create(merged_embedder["provider"], merged_embedder.get("config", {}), None)
+                dims = len(probe.embed("dimension probe"))
+            except Exception:
+                logging.warning(
+                    "Could not auto-detect the new embedder's dimension -- leaving the vector store config untouched.",
+                    exc_info=True,
+                )
+                return config
+
+            current_dims = current.get("vector_store", {}).get("config", {}).get("embedding_model_dims")
+            if dims == current_dims:
+                return config
+
+            logging.info(
+                "Embedder dimension changed (%s -> %s); recreating the '%s' vector table.",
+                current_dims, dims, POSTGRES_COLLECTION_NAME,
+            )
+            _recreate_vector_table()
+
+            config = deepcopy(config)
+            config.setdefault("vector_store", {}).setdefault("config", {})["embedding_model_dims"] = dims
+            return config
+
+
+        @app.post("/configure", summary="Configure Mem0")
+        def set_config(config: Dict[str, Any], _auth=Depends(require_admin)):
+            """Set memory configuration. Requires admin role."""
+            _validate_bundled_providers(config)
+            config = _autodetect_embedding_dims(config)
+            update_config(config)
+            return {"message": "Configuration set successfully"}'''
+
+        if anchor not in src:
+            raise SystemExit("ERROR: /configure anchor not found in main.py -- mem0 server source may have changed upstream.")
+
+        src = src.replace(anchor, replacement, 1)
+        open(path, "w").write(src)
+        print("Patched main.py: auto-detect embedding dimensions on /configure.")
+        PYEOF
         ENV PYTHONUNBUFFERED=1
         CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
     image: mcp-hub/memory-api:2.2.1
