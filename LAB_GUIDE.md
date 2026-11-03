@@ -778,11 +778,24 @@ database, key `config_overrides`) — if you ever see a model/embedder change no
 effect, that table is where to look, and `DELETE FROM settings WHERE key = 'config_overrides';`
 followed by `docker compose up -d --force-recreate memory-api` clears it back to defaults.
 
-**One setting has NO dashboard field at all: the embedding dimension.** mem0's Configure UI
-only exposes LLM/embedder *model* selection, not the vector store's dimension size, so a
-non-default embedding model needs this fixed by hand — either re-add a `MEM0_EMBEDDING_DIMS`
-line to `my-mcp-tools/mcp-hub/.env` yourself (`install.sh` won't write it, but the container
-still reads it if present), or insert it directly as a DB override:
+**The embedding dimension is handled automatically — no dashboard field needed.** mem0's
+Configure UI only exposes LLM/embedder *model* selection, not the vector store's dimension
+size, and that size must match whatever the selected embedder actually outputs (1536 for
+OpenAI's text-embedding-3-small, 768 for Vertex AI's text-embedding-005, etc.) or every insert
+fails with `psycopg.errors.DataException: expected 1536 dimensions, not N`. This project patches
+mem0's `POST /configure` (see `memory/compose.yaml`'s `dockerfile_inline`) to handle this for
+you: whenever you change the embedder model in the dashboard, it makes one real embedding call
+with the new model to measure its actual output size, and if that differs from what the
+`memories` table was created with, drops and recreates the table (old vectors can't carry over
+to a new model anyway) — so switching to a non-1536-dim embedder in the dashboard just works,
+with no manual steps.
+
+**If the auto-probe can't run** (e.g. the AI Gateway was briefly unreachable at the moment you
+saved the new model — check `memory-api`'s logs for `Could not auto-detect the new embedder's
+dimension`), the embedder change still takes effect but the dimension is left as-is, so you'll
+need to fix it by hand once: either re-add a `MEM0_EMBEDDING_DIMS` line to
+`my-mcp-tools/mcp-hub/.env` yourself and recreate `memory-api` (picked up at boot), or insert it
+directly as a DB override:
 ```sql
 INSERT INTO settings (key, value)
 VALUES ('config_overrides', '{"vector_store": {"config": {"embedding_model_dims": 768}}}')
@@ -795,9 +808,7 @@ to an existing table's column type:
 `docker exec memory-postgres psql -U postgres -d postgres -c "DROP TABLE IF EXISTS memories;"`
 (confirmed live: this table lives in the `postgres` database, **not** `mem0_app` — `mem0_app`
 only holds the app's own relational metadata — a mismatch that's easy to miss while
-troubleshooting), then recreate `memory-api`. Symptom if you skip this:
-`psycopg.errors.DataException: expected 1536 dimensions, not N` (1536 is OpenAI's standard,
-and mem0 silently assumes it regardless of the real embedder unless told otherwise).
+troubleshooting), then recreate `memory-api`.
 
 **If mem0 rejects an add with an error naming a DIFFERENT model than anything you
 configured** (confirmed live: entering provider-routed model strings like
