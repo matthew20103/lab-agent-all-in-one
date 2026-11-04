@@ -183,7 +183,7 @@ BASE_DOMAIN="${BASE_DOMAIN:-$default_domain}"
 # Fail fast here instead, with the actual fix, rather than let that happen again.
 case ".${BASE_DOMAIN}." in
   *.local.|*.test.|*.example.|*.invalid.|*.localhost.|*.internal.)
-    detected_ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+    detected_ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' || true)"
     echo "ERROR: '${BASE_DOMAIN}' ends in a reserved/special-use name that will NEVER resolve" >&2
     echo "       via real DNS, even though it may resolve on your own machine right now." >&2
     echo "       No real domain yet? Use nip.io instead — a free wildcard DNS service that" >&2
@@ -565,7 +565,7 @@ sudo ufw --force enable >/dev/null
 # tracks the connection's pre-DNAT destination, so it stays correct even though inbound
 # traffic to mcp-hub has its destination rewritten to the container's own IP by the time this
 # chain evaluates it.
-SERVER_IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+SERVER_IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' || true)"
 [ -n "$SERVER_IP" ] || { echo "ERROR: couldn't auto-detect this server's own LAN IP (ip route get 1.1.1.1)." >&2; exit 1; }
 DOCKER_USER_RULE="iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctorigdst ${SERVER_IP} ! -s ${GATEWAY_SOURCE_IP} -j DROP 2>/dev/null || iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctorigdst ${SERVER_IP} ! -s ${GATEWAY_SOURCE_IP} -j DROP"
 
@@ -618,7 +618,15 @@ if [ -n "$PUBLIC_IP" ]; then
   echo "   this server's public IP looks like: $PUBLIC_IP"
   for sub in "${ALL_SUBDOMAINS[@]}"; do
     fqdn="${sub}.${BASE_DOMAIN}"
-    resolved="$(getent ahostsv4 "$fqdn" 2>/dev/null | awk '{print $1; exit}')"
+    # `|| true`: getent exits non-zero (not just prints nothing) when a hostname has NO DNS
+    # record at all yet, not just when it resolves to the wrong IP — under `set -euo pipefail`
+    # that silently killed the WHOLE script right here, before it ever reached "Starting
+    # mcp-hub" or any of the docker compose steps, with zero error message. Confirmed live: a
+    # fresh install with only some subdomains' DNS records created yet died silently after the
+    # 3rd of 6 DNS warnings. This is meant to be informational-only (see comment above the
+    # loop) — `${resolved:-nothing}` below already anticipated an empty value, just not a
+    # failing command.
+    resolved="$(getent ahostsv4 "$fqdn" 2>/dev/null | awk '{print $1; exit}' || true)"
     if [ "$resolved" != "$PUBLIC_IP" ]; then
       echo "   WARNING: ${fqdn} resolves to '${resolved:-nothing}', not ${PUBLIC_IP} yet." >&2
       echo "            Point its DNS A record here before/while Caddy requests a cert — it" >&2
@@ -723,7 +731,11 @@ mcp_slugs="$(grep -oE 'servers/[a-zA-Z0-9_-]+/compose\.yaml' "$ROOT/my-mcp-tools
     while IFS= read -r slug; do
       [ -n "$slug" ] || continue
       upper_slug="$(printf '%s' "$slug" | tr '[:lower:]' '[:upper:]')"
-      token="$(grep -E "^MCP_TOKEN_${upper_slug}=" "$HOME/mcp-secrets/hub.env" 2>/dev/null | cut -d= -f2-)"
+      # `|| true`: same hazard as mcp_slugs above — grep exits 1 (not an error here) if a
+      # slug's token line isn't in hub.env yet, which would otherwise silently kill the rest of
+      # this summary mid-loop under `set -euo pipefail`. `${token:-<not found...>}` below
+      # already anticipated an empty value, just not a failing command.
+      token="$(grep -E "^MCP_TOKEN_${upper_slug}=" "$HOME/mcp-secrets/hub.env" 2>/dev/null | cut -d= -f2- || true)"
       echo "   ${slug}"
       echo "      URL:   http://${SERVER_IP}:8080/${slug}/mcp"
       echo "      Token: ${token:-<not found — check ~/mcp-secrets/hub.env by hand>}"
