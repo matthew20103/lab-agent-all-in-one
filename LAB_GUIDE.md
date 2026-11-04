@@ -81,7 +81,10 @@ Gateway details below as it goes:
 
 When it finishes, confirm the three sites are reachable:
 - `https://chat.{your-domain}` — the chat client
-- `https://agent.{your-domain}` — the agent backend (should return a basic health response)
+- `https://agent.{your-domain}` — the agent backend. It's a pure API server with no root route,
+  so browsing to it directly returns `{"detail":"Not Found"}` — that 404 (not a connection
+  error or TLS warning) is itself the confirmation it's up; it's never meant to be opened
+  directly except by `client-chat-ui` itself.
 - `https://dashboard.{your-domain}` — the admin dashboard (Basic Auth protected)
 
 ### d) Route the LLM call to AI Gateway
